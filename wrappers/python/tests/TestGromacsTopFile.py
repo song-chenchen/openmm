@@ -93,6 +93,20 @@ class TestGromacsTopFile(unittest.TestCase):
                     cutoff_distance = force.getCutoffDistance()
             self.assertEqual(cutoff_distance, cutoff_check)
 
+    def test_SwitchingFunction(self):
+        """Test using a switching function."""
+        for filename in ('systems/implicit.top', 'systems/ionic.top'):
+            top = GromacsTopFile(filename)
+            for distance in (None, 0.8*nanometers):
+                system = top.createSystem(nonbondedMethod=CutoffNonPeriodic, switchDistance=distance)
+                for f in system.getForces():
+                    if isinstance(f, NonbondedForce) or isinstance(f, CustomNonbondedForce):
+                        if distance is None:
+                            self.assertFalse(f.getUseSwitchingFunction())
+                        else:
+                            self.assertTrue(f.getUseSwitchingFunction())
+                            self.assertEqual(distance, f.getSwitchingDistance())
+
     def test_EwaldErrorTolerance(self):
         """Test to make sure the ewaldErrorTolerance parameter is passed correctly."""
 
@@ -172,6 +186,13 @@ class TestGromacsTopFile(unittest.TestCase):
 
         top = GromacsTopFile('systems/bnz.top')
         gro = GromacsGroFile('systems/bnz.gro')
+        for atom in top.topology.atoms():
+            if atom.name.startswith('C'):
+                self.assertEqual(elem.carbon, atom.element)
+            elif atom.name.startswith('H'):
+                self.assertEqual(elem.hydrogen, atom.element)
+            else:
+                self.assertIsNone(atom.element)
         system = top.createSystem()
 
         self.assertEqual(26, system.getNumParticles())

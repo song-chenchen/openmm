@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2013-2018 Stanford University and the Authors.      *
+ * Portions copyright (c) 2013-2020 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -39,6 +39,7 @@
 #include "CpuGayBerneForce.h"
 #include "CpuGBSAOBCForce.h"
 #include "CpuLangevinDynamics.h"
+#include "CpuLangevinMiddleDynamics.h"
 #include "CpuNeighborList.h"
 #include "CpuNonbondedForce.h"
 #include "CpuPlatform.h"
@@ -273,7 +274,7 @@ private:
     std::vector<std::vector<double> > bonded14ParamArray;
     double nonbondedCutoff, switchingDistance, rfDielectric, ewaldAlpha, ewaldDispersionAlpha, ewaldSelfEnergy, dispersionCoefficient;
     int kmax[3], gridSize[3], dispersionGridSize[3];
-    bool useSwitchingFunction, useOptimizedPme, hasInitializedPme, hasInitializedDispersionPme, hasParticleOffsets, hasExceptionOffsets;
+    bool useSwitchingFunction, exceptionsArePeriodic, useOptimizedPme, hasInitializedPme, hasInitializedDispersionPme, hasParticleOffsets, hasExceptionOffsets;
     std::vector<std::set<int> > exclusions;
     std::vector<std::pair<float, float> > particleParams;
     std::vector<float> C6params;
@@ -532,6 +533,43 @@ public:
 private:
     CpuPlatform::PlatformData& data;
     CpuLangevinDynamics* dynamics;
+    std::vector<double> masses;
+    double prevTemp, prevFriction, prevStepSize;
+};
+
+/**
+ * This kernel is invoked by LangevinMiddleIntegrator to take one time step.
+ */
+class CpuIntegrateLangevinMiddleStepKernel : public IntegrateLangevinMiddleStepKernel {
+public:
+    CpuIntegrateLangevinMiddleStepKernel(std::string name, const Platform& platform, CpuPlatform::PlatformData& data) : IntegrateLangevinMiddleStepKernel(name, platform),
+            data(data), dynamics(0) {
+    }
+    ~CpuIntegrateLangevinMiddleStepKernel();
+    /**
+     * Initialize the kernel, setting up the particle masses.
+     * 
+     * @param system     the System this kernel will be applied to
+     * @param integrator the LangevinMiddleIntegrator this kernel will be used for
+     */
+    void initialize(const System& system, const LangevinMiddleIntegrator& integrator);
+    /**
+     * Execute the kernel.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the LangevinMiddleIntegrator this kernel is being used for
+     */
+    void execute(ContextImpl& context, const LangevinMiddleIntegrator& integrator);
+    /**
+     * Compute the kinetic energy.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the LangevinMiddleIntegrator this kernel is being used for
+     */
+    double computeKineticEnergy(ContextImpl& context, const LangevinMiddleIntegrator& integrator);
+private:
+    CpuPlatform::PlatformData& data;
+    CpuLangevinMiddleDynamics* dynamics;
     std::vector<double> masses;
     double prevTemp, prevFriction, prevStepSize;
 };

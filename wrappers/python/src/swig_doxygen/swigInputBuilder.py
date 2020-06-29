@@ -21,6 +21,9 @@ except ImportError:
 INDENT = "   "
 docTags = {'emphasis':'i', 'bold':'b', 'itemizedlist':'ul', 'listitem':'li', 'preformatted':'pre', 'computeroutput':'tt', 'subscript':'sub'}
 
+def is_method_abstract(argstring):
+    return argstring.split(")")[-1].find("=0") >= 0
+
 def striphtmltags(s):
     """Strip a couple html tags used inside docstrings in the C++ source
     to produce something more easily read as plain text.
@@ -446,6 +449,7 @@ class SwigInputBuilder:
 
         #write only non Constructor and Destructor methods and python mods
         self.fOut.write("\n")
+        methodsWithOutputArgs = set()
         for items in methodList:
             clearOutput=""
             (shortClassName, memberNode,
@@ -479,6 +483,7 @@ class SwigInputBuilder:
                                         (INDENT, simpleType, pType, pName))
                         clearOutput = "%s%s%%clear %s %s;\n" \
                                      % (clearOutput, INDENT, pType, pName)
+                        methodsWithOutputArgs.add((shortClassName, methName))
 
             mArgsstring = getText("argsstring", memberNode)
             try:
@@ -503,10 +508,13 @@ class SwigInputBuilder:
             paramList = findNodes(memberNode, 'param')
 
             # write pythonprepend blocks
-            mArgsstring = getText("argsstring", memberNode)
+            if isConstructors:
+                mArgsstring = '' # specifying args to constructors seems to prevent append and prepend from working
+            else:
+                mArgsstring = getText("argsstring", memberNode)
             if self.fOutPythonprepend and \
                len(paramList) and \
-               mArgsstring.find('=0') < 0:
+               not is_method_abstract(mArgsstring):
                 text = '''
 %pythonprepend OpenMM::{shortClassName}::{methName}{mArgsstring} %{{{{{{0}}
 %}}}}'''.format(shortClassName=shortClassName, methName=methName, mArgsstring=mArgsstring)
@@ -523,6 +531,29 @@ class SwigInputBuilder:
         s = ("the %s object does not own its corresponding OpenMM object"
              % self.__class__.__name__)
         raise Exception(s)'''.format(argName=argName)
+
+
+                # Convert input arguments to the proper units, if specified.
+                if key not in methodsWithOutputArgs:
+                    if key in self.configModule.UNITS:
+                        argUnits=self.configModule.UNITS[key][1]
+                    elif ("*", methName) in self.configModule.UNITS:
+                        argUnits=self.configModule.UNITS[("*", methName)][1]
+                    else:
+                        argUnits = ()
+                    if len(argUnits) > 0 and (self.SWIG_COMPACT_ARGUMENTS or isConstructors):
+                        textInside += '''
+    args = list(args)'''
+                    for i, units in enumerate(argUnits):
+                        if units is not None:
+                            if self.SWIG_COMPACT_ARGUMENTS or isConstructors:
+                                argName = 'args[%s]' % i
+                            else:
+                                argName = getText('declname', paramList[i])
+                            textInside += '''
+    if unit.is_quantity({argName}):
+        {argName} = {argName}.value_in_unit({units})'''.format(argName=argName, units=units)
+
                 for argNum in self.configModule.REQUIRE_ORDERED_SET.get(key, []):
                     if self.SWIG_COMPACT_ARGUMENTS:
                         argName = 'args[%s]' % argNum
@@ -536,9 +567,10 @@ class SwigInputBuilder:
 
             # write pythonappend blocks
             if self.fOutPythonappend \
-               and mArgsstring.find('=0') < 0:
+               and not is_method_abstract(mArgsstring):
                 key = (shortClassName, methName)
-                #print "key %s %s \n" % (shortClassName, methName)
+                #sys.stdout.write("key %s %s \n" % (shortClassName, methName))
+
                 addText=''
                 returnType = getText("type", memberNode)
 
@@ -568,7 +600,7 @@ class SwigInputBuilder:
                                  % (addText, INDENT, valueUnits[0])
 
                 for vUnit in valueUnits[1]:
-                    if vUnit is not None:
+                    if vUnit is not None and key in methodsWithOutputArgs:
                         addText = "%s%sval[%s]=unit.Quantity(val[%s], %s)\n" \
                                      % (addText, INDENT, index, index, vUnit)
                     index+=1
@@ -592,8 +624,15 @@ class SwigInputBuilder:
                             pType = getText('type', pNode)
                         except IndexError:
                             pType = getText('type/ref', pNode)
+                        # parse default arguments
+                        try:
+                            defaultValue = getText('defval', pNode)
+                        except:
+                            defaultValue = ""
+                        if defaultValue != "":
+                            defaultValue = "=%s" %defaultValue
                         pName = getText('declname', pNode)
-                        self.fOutPythonappend.write("%s%s %s" % (sepChar, pType, pName))
+                        self.fOutPythonappend.write("%s%s %s%s" % (sepChar, pType, pName, defaultValue))
                         sepChar=', '
 
                         if pType.find('&')>=0 and \

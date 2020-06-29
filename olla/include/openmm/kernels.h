@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2018 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2020 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -33,6 +33,7 @@
  * -------------------------------------------------------------------------- */
 
 #include "openmm/AndersenThermostat.h"
+#include "openmm/LangevinMiddleIntegrator.h"
 #include "openmm/BrownianIntegrator.h"
 #include "openmm/CMAPTorsionForce.h"
 #include "openmm/CMMotionRemover.h"
@@ -63,6 +64,8 @@
 #include "openmm/VariableLangevinIntegrator.h"
 #include "openmm/VariableVerletIntegrator.h"
 #include "openmm/VerletIntegrator.h"
+#include "openmm/NoseHooverIntegrator.h"
+#include "openmm/NoseHooverChain.h"
 #include <iosfwd>
 #include <set>
 #include <string>
@@ -1058,6 +1061,84 @@ public:
 };
 
 /**
+ * This kernel is invoked by NoseHooverIntegrator to take one time step.
+ */
+class IntegrateNoseHooverStepKernel : public KernelImpl {
+public:
+    static std::string Name() {
+        return "IntegrateNoseHooverStep";
+    }
+    IntegrateNoseHooverStepKernel(std::string name, const Platform& platform) : KernelImpl(name, platform) {
+    }
+    /**
+     * Initialize the kernel.
+     *
+     * @param system     the System this kernel will be applied to
+     * @param integrator the NoseHooverIntegrator this kernel will be used for
+     */
+    virtual void initialize(const System& system, const NoseHooverIntegrator& integrator) = 0;
+    /**
+     * Execute the kernel.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the NoseHooverIntegrator this kernel is being used for
+     * @param forcesAreValid a reference to the parent integrator's boolean for keeping
+     *                       track of the validity of the current forces.
+     */
+    virtual void execute(ContextImpl& context, const NoseHooverIntegrator& integrator, bool &forcesAreValid) = 0;
+    /**
+     * Compute the kinetic energy.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the NoseHooverIntegrator this kernel is being used for
+     */
+    virtual double computeKineticEnergy(ContextImpl& context, const NoseHooverIntegrator& integrator) = 0;
+    /**
+     * Execute the kernel that propagates the Nose Hoover chain and determines the velocity scale factor.
+     *
+     * @param context  the context in which to execute this kernel
+     * @param noseHooverChain the object describing the chain to be propagated.
+     * @param kineticEnergy the {center of mass, relative} kineticEnergies of the particles being thermostated by this chain.
+     * @param timeStep the time step used by the integrator.
+     * @return the velocity scale factor to apply to the particles associated with this heat bath.
+     */
+    virtual std::pair<double, double> propagateChain(ContextImpl& context, const NoseHooverChain &noseHooverChain, std::pair<double, double> kineticEnergy, double timeStep) = 0;
+    /**
+     * Execute the kernal that computes the total (kinetic + potential) heat bath energy.
+     *
+     * @param context the context in which to execute this kernel
+     * @param noseHooverChain the chain whose energy is to be determined.
+     * @return the total heat bath energy.
+     */
+    virtual double computeHeatBathEnergy(ContextImpl& context, const NoseHooverChain &noseHooverChain) = 0;
+    /**
+     * Execute the kernel that computes the kinetic energy for a subset of atoms,
+     * or the relative kinetic energy of Drude particles with respect to their parent atoms
+     *
+     * @param context the context in which to execute this kernel
+     * @param noseHooverChain the chain whose energy is to be determined.
+     * @param downloadValue whether the computed value should be downloaded and returned.
+     */
+    virtual std::pair<double, double> computeMaskedKineticEnergy(ContextImpl& context, const NoseHooverChain &noseHooverChain, bool downloadValue) = 0;
+    /**
+     * Execute the kernel that scales the velocities of particles associated with a nose hoover chain
+     *
+     * @param context the context in which to execute this kernel
+     * @param noseHooverChain the chain whose energy is to be determined.
+     * @param scaleFactor the multiplicative factor by which {absolute, relative} velocities are scaled.
+     */
+    virtual void scaleVelocities(ContextImpl& context, const NoseHooverChain &noseHooverChain, std::pair<double, double> scaleFactor) = 0;
+    /**
+     * Write the chain states to a checkpoint.
+     */
+    virtual void createCheckpoint(ContextImpl& context, std::ostream& stream) const = 0;
+    /**
+     * Load the chain states from a checkpoint.
+     */
+    virtual void loadCheckpoint(ContextImpl& context, std::istream& stream) = 0;
+};
+
+/**
  * This kernel is invoked by LangevinIntegrator to take one time step.
  */
 class IntegrateLangevinStepKernel : public KernelImpl {
@@ -1088,6 +1169,39 @@ public:
      * @param integrator the LangevinIntegrator this kernel is being used for
      */
     virtual double computeKineticEnergy(ContextImpl& context, const LangevinIntegrator& integrator) = 0;
+};
+
+/**
+ * This kernel is invoked by LangevinMiddleIntegrator to take one time step.
+ */
+class IntegrateLangevinMiddleStepKernel : public KernelImpl {
+public:
+    static std::string Name() {
+        return "IntegrateLangevinMiddleStep";
+    }
+    IntegrateLangevinMiddleStepKernel(std::string name, const Platform& platform) : KernelImpl(name, platform) {
+    }
+    /**
+     * Initialize the kernel.
+     * 
+     * @param system     the System this kernel will be applied to
+     * @param integrator the LangevinMiddleIntegrator this kernel will be used for
+     */
+    virtual void initialize(const System& system, const LangevinMiddleIntegrator& integrator) = 0;
+    /**
+     * Execute the kernel.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the LangevinMiddleIntegrator this kernel is being used for
+     */
+    virtual void execute(ContextImpl& context, const LangevinMiddleIntegrator& integrator) = 0;
+    /**
+     * Compute the kinetic energy.
+     * 
+     * @param context    the context in which to execute this kernel
+     * @param integrator the LangevinMiddleIntegrator this kernel is being used for
+     */
+    virtual double computeKineticEnergy(ContextImpl& context, const LangevinMiddleIntegrator& integrator) = 0;
 };
 
 /**

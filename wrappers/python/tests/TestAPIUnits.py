@@ -682,7 +682,7 @@ class TestAPIUnits(unittest.TestCase):
         force.setSolventDielectric(80)
         self.assertEqual(force.getSolventDielectric(), 80)
 
-        self.assertEqual(force.getSurfaceAreaFactor(),
+        self.assertAlmostEqualUnit(force.getSurfaceAreaFactor(),
                 -170.35173066268223*kilojoule_per_mole/nanometer**2) # default
         force.setSurfaceAreaFactor(-1.0*kilocalorie_per_mole/angstrom**2)
         self.assertAlmostEqualUnit(force.getSurfaceAreaFactor(),
@@ -969,7 +969,7 @@ class TestAPIUnits(unittest.TestCase):
 
         self.assertEqual(force.getNumParticles(), 3)
 
-        p, sig, eps, scale = force.getParticleParameters(0)
+        p, sig, eps, scale, alchemical = force.getParticleParameters(0)
         self.assertEqual(p, 0)
         self.assertEqual(sig, 0.1*nanometers)
         self.assertIs(sig.unit, nanometers)
@@ -977,7 +977,7 @@ class TestAPIUnits(unittest.TestCase):
         self.assertIs(eps.unit, kilojoules_per_mole)
         self.assertEqual(scale, 1.0)
 
-        p, sig, eps, scale = force.getParticleParameters(1)
+        p, sig, eps, scale, alchemical = force.getParticleParameters(1)
         self.assertEqual(p, 1)
         self.assertEqual(sig, 1.0*angstroms)
         self.assertIs(sig.unit, nanometers)
@@ -985,7 +985,7 @@ class TestAPIUnits(unittest.TestCase):
         self.assertIs(eps.unit, kilojoules_per_mole)
         self.assertEqual(scale, 0.5)
 
-        p, sig, eps, scale = force.getParticleParameters(2)
+        p, sig, eps, scale, alchemical = force.getParticleParameters(2)
         self.assertEqual(p, 1)
         self.assertAlmostEqualUnit(sig, 0.8*angstroms)
         self.assertIs(sig.unit, nanometers)
@@ -1165,6 +1165,60 @@ class TestAPIUnits(unittest.TestCase):
         self.assertAlmostEqualUnit(integrator.getFriction(), 0.1/microsecond)
         self.assertEqual(integrator.getStepSize(), 1*femtosecond)
 
+    def testNoseHooverIntegrator(self):
+        """ Tests the NoseHooverIntegrator API features """
+        integrator = NoseHooverIntegrator(300, 0.1, 1)
+        self.assertEqual(integrator.getTemperature(0), 300*kelvin)
+        self.assertEqual(integrator.getCollisionFrequency(), 0.1/picosecond)
+        self.assertEqual(integrator.getStepSize(), 1*picosecond)
+
+        integrator = NoseHooverIntegrator(300*kelvin, 0.1/microsecond, 1*femtosecond)
+        self.assertEqual(integrator.getTemperature(), 300*kelvin)
+        self.assertAlmostEqualUnit(integrator.getCollisionFrequency(), 0.1/microsecond)
+        self.assertEqual(integrator.getStepSize(), 1*femtosecond)
+        self.assertEqual(integrator.computeHeatBathEnergy(), 0.0*kilojoule_per_mole)
+
+        # Test setters
+        integrator.setTemperature(200*kelvin)
+        self.assertEqual(integrator.getTemperature(), 200*kelvin)
+        integrator.setCollisionFrequency(0.1/picosecond)
+        self.assertEqual(integrator.getCollisionFrequency(), 0.1/picosecond)
+        integrator.setRelativeTemperature(200*kelvin)
+        self.assertEqual(integrator.getRelativeTemperature(), 200*kelvin)
+        integrator.setRelativeCollisionFrequency(0.1/picosecond)
+        self.assertEqual(integrator.getRelativeCollisionFrequency(), 0.1/picosecond)
+
+        # Test bare consructor and addThermostat
+        integrator = NoseHooverIntegrator(1*femtosecond)
+        self.assertEqual(integrator.getStepSize(), 1*femtosecond)
+
+        integrator.addThermostat(300*kelvin, 0.1/microsecond, 3, 3, 3)
+        self.assertAlmostEqualUnit(integrator.getTemperature(), 300*kelvin)
+        self.assertAlmostEqualUnit(integrator.getCollisionFrequency(), 0.1/microsecond)
+
+        integrator = NoseHooverIntegrator(1*femtosecond)
+        integrator.addSubsystemThermostat([0], [], 300*kelvin, 0.1/microsecond, 1.0*kelvin, 1.0/microsecond, 3, 3, 3)
+        self.assertAlmostEqualUnit(integrator.getTemperature(), 300*kelvin)
+        self.assertAlmostEqualUnit(integrator.getCollisionFrequency(), 0.1/microsecond)
+        self.assertAlmostEqualUnit(integrator.getRelativeTemperature(), 1.0*kelvin)
+        self.assertAlmostEqualUnit(integrator.getRelativeCollisionFrequency(), 1.0/microsecond)
+
+    def testDrudeNoseHooverIntegrator(self):
+        """ Tests the DrudeNoseHooverIntegrator API features """
+        integrator = DrudeNoseHooverIntegrator(300, 0.1, 1.0, 1.0, 1)
+        self.assertEqual(integrator.getTemperature(0), 300*kelvin)
+        self.assertEqual(integrator.getCollisionFrequency(), 0.1/picosecond)
+        self.assertEqual(integrator.getRelativeTemperature(0), 1.0*kelvin)
+        self.assertEqual(integrator.getRelativeCollisionFrequency(), 1.0/picosecond)
+        self.assertEqual(integrator.getStepSize(), 1*picosecond)
+
+        integrator = DrudeNoseHooverIntegrator(300*kelvin, 0.1/microsecond, 5.0*kelvin, 0.01/microsecond, 1*femtosecond)
+        self.assertEqual(integrator.getTemperature(), 300*kelvin)
+        self.assertAlmostEqualUnit(integrator.getCollisionFrequency(), 0.1/microsecond)
+        self.assertEqual(integrator.getRelativeTemperature(), 5.0*kelvin)
+        self.assertAlmostEqualUnit(integrator.getRelativeCollisionFrequency(), 0.01/microsecond)
+        self.assertEqual(integrator.getStepSize(), 1*femtosecond)
+
     def testAndersenThermostat(self):
         """ Tests the AndersenThermostat API features """
         force = AndersenThermostat(300*kelvin, 1/microsecond)
@@ -1175,6 +1229,28 @@ class TestAPIUnits(unittest.TestCase):
         force.setDefaultCollisionFrequency(1)
         self.assertEqual(force.getDefaultTemperature(), 298.15*kelvin)
         self.assertAlmostEqualUnit(force.getDefaultCollisionFrequency(), 1/picosecond)
+
+    def testMonteCarloMembraneBarostat(self):
+        """ Tests the MonteCarloMembraneBarostat API features """
+        force = MonteCarloMembraneBarostat(1.0, 1.5, 300, MonteCarloMembraneBarostat.XYAnisotropic, MonteCarloMembraneBarostat.ZFixed, 25)
+        self.assertEqual(force.getDefaultPressure(), 1.0*bar)
+        self.assertEqual(force.getDefaultSurfaceTension(), 1.5*bar*nanometer)
+        self.assertEqual(force.getDefaultTemperature(), 300*kelvin)
+        self.assertEqual(force.getXYMode(), MonteCarloMembraneBarostat.XYAnisotropic)
+        self.assertEqual(force.getZMode(), MonteCarloMembraneBarostat.ZFixed)
+        self.assertEqual(force.getFrequency(), 25)
+
+        force = MonteCarloMembraneBarostat(1.1*bar, 2.0*bar*nanometer, 350*kelvin, MonteCarloMembraneBarostat.XYAnisotropic, MonteCarloMembraneBarostat.ZFixed, 25)
+        self.assertEqual(force.getDefaultPressure(), 1.1*bar)
+        self.assertEqual(force.getDefaultSurfaceTension(), 2.0*bar*nanometer)
+        self.assertEqual(force.getDefaultTemperature(), 350*kelvin)
+
+        force.setDefaultPressure(1.2*bar)
+        force.setDefaultSurfaceTension(2.5*bar*nanometer)
+        force.setDefaultTemperature(298.15)
+        self.assertEqual(force.getDefaultPressure(), 1.2*bar)
+        self.assertEqual(force.getDefaultSurfaceTension(), 2.5*bar*nanometer)
+        self.assertEqual(force.getDefaultTemperature(), 298.15*kelvin)
 
     def testDrudeSCFIntegrator(self):
         """ Tests the DrudeSCFIntegrator API features """

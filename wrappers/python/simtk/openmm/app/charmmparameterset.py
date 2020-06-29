@@ -9,10 +9,10 @@ Structures at Stanford, funded under the NIH Roadmap for Medical Research,
 grant U54 GM072970. See https://simtk.org.  This code was originally part of
 the ParmEd program and was ported for use with OpenMM.
 
-Copyright (c) 2014 the Authors
+Copyright (c) 2014-2020 the Authors
 
 Author: Jason M. Swails
-Contributors: Jing Huang
+Contributors: Jing Huang, Peter Eastman
 Date: Sep. 17, 2014
 
 Permission is hereby granted, free of charge, to any person obtaining a
@@ -116,6 +116,7 @@ class CharmmParameterSet(object):
         self.nbfix_types = dict()
         self.nbthole_types = dict()
         self.parametersets = []
+        self.nbxmod = 5
 
         # Load all of the files
         tops, pars, strs = [], [], []
@@ -228,8 +229,17 @@ class CharmmParameterSet(object):
         nonbonded_types = dict() # Holder
         parameterset = None
         read_first_nonbonded = False
+        previous = ''
         for line in f:
-            line = line.strip()
+            line = previous+line.strip()
+            previous = ''
+            if line.endswith('-'):
+                # This will be continued on the next line.
+                previous = line[:-1]
+                continue
+            if line.startswith('!'):
+                # This is a comment.
+                continue
             if not line:
                 # This is a blank line
                 continue
@@ -237,27 +247,33 @@ class CharmmParameterSet(object):
                 parameterset = line.strip()[1:78]
                 continue
             # Set section if this is a section header
-            if line.startswith('ATOMS'):
+            if line.startswith('ATOM'):
                 section = 'ATOMS'
                 continue
-            if line.startswith('BONDS'):
+            if line.startswith('BOND'):
                 section = 'BONDS'
                 continue
-            if line.startswith('ANGLES'):
+            if line.startswith('ANGL') or line.startswith('THET'):
                 section = 'ANGLES'
                 continue
-            if line.startswith('DIHEDRALS'):
+            if line.startswith('DIHE') or line.startswith('PHI'):
                 section = 'DIHEDRALS'
                 continue
-            if line.startswith('IMPROPER'):
+            if line.startswith('IMPR') or line.startswith('IMPH'):
                 section = 'IMPROPER'
                 continue
             if line.startswith('CMAP'):
                 section = 'CMAP'
                 continue
-            if line.startswith('NONBONDED'):
+            if line.startswith('NONB') or line.startswith('NBON'):
                 read_first_nonbonded = False
                 section = 'NONBONDED'
+                fields = line.upper().split()
+                if 'NBXMOD' in fields:
+                    nbxmod = int(fields[fields.index('NBXMOD')+1])
+                    if nbxmod not in list(range(-5, 6)):
+                        raise CharmmFileError('Unsupported value for NBXMOD: %d' % nbxmod)
+                    self.nbxmod = nbxmod
                 continue
             if line.startswith('NBFIX'):
                 section = 'NBFIX'

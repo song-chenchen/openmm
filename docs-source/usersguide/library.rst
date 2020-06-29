@@ -243,14 +243,14 @@ simulation might look like:
         angles->addAngle(angle[i].particle1, angle[i].particle2,
             angle[i].particle3, angle[i].angle, angle[i].k);
     // ...create and initialize other force field terms in the same way
-    LangevinIntegrator integrator(temperature, friction, stepSize);
+    LangevinMiddleIntegrator integrator(temperature, friction, stepSize);
     Context context(system, integrator);
     context.setPositions(initialPositions);
     context.setVelocities(initialVelocities);
     integrator.step(10000);
 
 We create a System, add various Forces to it, and set parameters on both the
-System and the Forces.  We then create a LangevinIntegrator, initialize a
+System and the Forces.  We then create a LangevinMiddleIntegrator, initialize a
 Context in which to run a simulation, and instruct the Integrator to advance the
 simulation for 10,000 time steps.
 
@@ -1297,7 +1297,7 @@ existing MD program.
     static const double SolventDielectric   = 80.;     // typical for water
     static const double SoluteDielectric    = 2.;      // typical for protein
 
-    static const double StepSizeInFs        = 2;       // integration step size (fs)
+    static const double StepSizeInFs        = 4;       // integration step size (fs)
     static const double ReportIntervalInFs  = 50;      // how often to issue PDB frame (fs)
     static const double SimulationTimeInPs  = 100;     // total simulation time (ps)
 
@@ -1631,7 +1631,7 @@ along with the handle :code:`omm`\ , back to the calling function.
     // best available Platform. Initialize the configuration from the default
     // positions we collected above. Initial velocities will be zero but could
     // have been set here.
-    omm->integrator = new OpenMM::LangevinIntegrator(temperature,
+    omm->integrator = new OpenMM::LangevinMiddleIntegrator(temperature,
     frictionInPs,
     stepSizeInFs * OpenMM::PsPerFs);
     omm->context    = new OpenMM::Context(*omm->system, *omm->integrator);
@@ -3634,7 +3634,7 @@ the Drude particle and the spring constant *k* by
 A damped interaction\ :cite:`Thole1981` is used between dipoles that are
 bonded to each other.
 
-The equations of motion can be integrated with two different methods:
+The equations of motion can be integrated with three different methods:
 
 #. In the Self Consistent Field (SCF) method, the ordinary particles are first
    updated as usual.  A local energy minimization is then performed to select new
@@ -3644,8 +3644,25 @@ The equations of motion can be integrated with two different methods:
 #. In the extended Lagrangian method, the positions of the Drude particles are
    treated as dynamical variables, just like any other particles.  A small amount
    of mass is transferred from the parent particles to the Drude particles,
-   allowing them to be integrated normally.  A dual Langevin integrator is used to
+   allowing them to be integrated normally.  A dual Langevin or Nose-Hoover integrator is used to
    maintain the center of mass of each Drude particle pair at the system
    temperature, while using a much lower temperature for their relative internal
    motion.  In practice, this produces dipole moments very close to those from the
    SCF solution while being much faster to compute.
+#. The Nosé-Hoover dual thermostat method.  In this approach the motion of
+   non-Drude sites and center of mass motion of Drude pairs are thermostated to
+   the target temperature with one thermostat.  Another thermostat is used to keep
+   relative motion of Drude pairs to a different, typically much lower,
+   temperature to maintain separation of nuclear and electronic degrees of
+   freedom.  The minimal specification is as follows::
+
+      DrudeNoseHooverIntegrator integrator(temperature, frequency,
+                                           temperatureDrude, frequencyDrude,
+                                           1*femtoseconds)
+
+   Where the first and third arguments specify the center-of-mass temperature and
+   relative temperature for each Drude pair, respecitvely.  The second and fourth
+   arguments describe the frequency of interaction with the center-of-mass and
+   relative heat baths, respectively, and should be specified with inverse time
+   units.  The fifth argument is the timestep.  The multi-timestep and Nosé-Hoover
+   chain length may also be specified, but sensible defaults are provided.

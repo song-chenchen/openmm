@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2018 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2020 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 using namespace OpenMM;
@@ -596,6 +597,7 @@ void testForceGroups() {
     integrator.addComputeGlobal("oute", "energy");
     integrator.addComputeGlobal("oute1", "energy1");
     integrator.addComputeGlobal("oute2", "energy2");
+    integrator.setIntegrationForceGroups((1<<1) + (1<<2));
     HarmonicBondForce* bonds = new HarmonicBondForce();
     bonds->addBond(0, 1, 1.5, 1.1);
     bonds->setForceGroup(1);
@@ -605,6 +607,10 @@ void testForceGroups() {
     nb->addParticle(0.2, 1, 0);
     nb->setForceGroup(2);
     system.addForce(nb);
+    CustomExternalForce* external = new CustomExternalForce("x");
+    external->addParticle(0);
+    external->setForceGroup(3);
+    system.addForce(external);
     Context context(system, integrator, platform);
     vector<Vec3> positions(2);
     positions[0] = Vec3(-1, 0, 0);
@@ -632,13 +638,13 @@ void testForceGroups() {
     
     // Make sure they also match the values returned by the Context.
     
-    State s = context.getState(State::Forces | State::Energy, false);
+    State s = context.getState(State::Forces | State::Energy, false, 6);
     State s1 = context.getState(State::Forces | State::Energy, false, 2);
     State s2 = context.getState(State::Forces | State::Energy, false, 4);
     vector<Vec3> c, c1, c2;
-    c = context.getState(State::Forces, false).getForces();
-    c1 = context.getState(State::Forces, false, 2).getForces();
-    c2 = context.getState(State::Forces, false, 4).getForces();
+    c = s.getForces();
+    c1 = s1.getForces();
+    c2 = s2.getForces();
     ASSERT_EQUAL_VEC(f[0], c[0], 1e-5);
     ASSERT_EQUAL_VEC(f[1], c[1], 1e-5);
     ASSERT_EQUAL_VEC(f1[0], c1[0], 1e-5);
@@ -1081,6 +1087,106 @@ void testVectorFunctions() {
     ASSERT_EQUAL_TOL(sumy, integrator.getGlobalVariable(0), 1e-5);
 }
 
+/**
+ * This test records energies at multiple points during the step and checks that
+ * they're correct.
+ */
+void testRecordEnergy() {
+    const int numParticles = 8;
+    System system;
+    CustomIntegrator integrator(0.002);
+    integrator.addGlobalVariable("startEnergy", 0);
+    integrator.addGlobalVariable("endEnergy", 0);
+    integrator.addUpdateContextState();
+    integrator.addComputePerDof("v", "v+0.5*dt*f/m");
+    integrator.addComputeGlobal("startEnergy", "energy");
+    integrator.addComputePerDof("x", "x+dt*v");
+    integrator.addComputeGlobal("endEnergy", "energy");
+    integrator.addConstrainPositions();
+    integrator.addComputePerDof("v", "v+0.5*dt*f/m");
+    NonbondedForce* forceField = new NonbondedForce();
+    for (int i = 0; i < numParticles; ++i) {
+        system.addParticle(i%2 == 0 ? 5.0 : 10.0);
+        forceField->addParticle((i%2 == 0 ? 0.2 : -0.2), 0.5, 5.0);
+    }
+    system.addForce(forceField);
+    Context context(system, integrator, platform);
+    vector<Vec3> positions(numParticles);
+    vector<Vec3> velocities(numParticles);
+    OpenMM_SFMT::SFMT sfmt;
+    init_gen_rand(0, sfmt);
+
+    for (int i = 0; i < numParticles; ++i) {
+        positions[i] = Vec3(i/2, (i+1)/2, 0);
+        velocities[i] = Vec3(genrand_real2(sfmt)-0.5, genrand_real2(sfmt)-0.5, genrand_real2(sfmt)-0.5);
+    }
+    context.setPositions(positions);
+    context.setVelocities(velocities);
+    
+    // Simulate it and see whether the energies are recorded correctly.
+    
+    for (int i = 0; i < 10; ++i) {
+        double startEnergy = context.getState(State::Energy).getPotentialEnergy();
+        integrator.step(1);
+        double endEnergy = context.getState(State::Energy).getPotentialEnergy();
+        ASSERT_EQUAL_TOL(startEnergy, integrator.getGlobalVariable(0), 1e-6);
+        ASSERT_EQUAL_TOL(endEnergy, integrator.getGlobalVariable(1), 1e-6);
+    }
+}
+
+void testInitialTemperature() {
+    // Check temperature initialization for a collection of randomly placed particles
+    const int numParticles = 50000;
+    const int nDoF = 3 * numParticles;
+    const double targetTemperature = 300;
+    System system;
+    OpenMM_SFMT::SFMT sfmt;
+    init_gen_rand(0, sfmt);
+    std::vector<Vec3> positions(numParticles);
+
+    for (int i = 0; i < numParticles; i++) {
+        system.addParticle(1.0);
+        positions[i][0] = genrand_real2(sfmt);
+        positions[i][1] = genrand_real2(sfmt);
+        positions[i][2] = genrand_real2(sfmt);
+    }
+
+    CustomIntegrator integrator(0.001);
+    Context context(system, integrator, platform);
+    context.setPositions(positions);
+    context.setVelocitiesToTemperature(targetTemperature);
+    auto velocities = context.getState(State::Velocities).getVelocities();
+    double kineticEnergy = 0;
+    for(const auto &v : velocities) kineticEnergy += 0.5 * v.dot(v);
+    double temperature = (2*kineticEnergy / (nDoF*BOLTZ));
+    ASSERT_USUALLY_EQUAL_TOL(targetTemperature, temperature, 0.01);
+}
+
+void testCheckpoint() {
+    // Test that integrator variables get loaded correctly from checkpoints.
+    System system;
+    system.addParticle(1.0);
+    CustomIntegrator integrator(0.001);
+    integrator.addGlobalVariable("a", 1.0);
+    integrator.addPerDofVariable("b", 2.0);
+    Context context(system, integrator, platform);
+    vector<Vec3> positions(1, Vec3());
+    context.setPositions(positions);
+    integrator.setGlobalVariable(0, 5.0);
+    vector<Vec3> b1(1, Vec3(1, 2, 3));
+    integrator.setPerDofVariable(0, b1);
+    stringstream checkpoint; 
+    context.createCheckpoint(checkpoint);
+    integrator.setGlobalVariable(0, 10.0);
+    vector<Vec3> b2(1, Vec3(4, 5, 6));
+    integrator.setPerDofVariable(0, b2);
+    context.loadCheckpoint(checkpoint);
+    ASSERT_EQUAL(5.0, integrator.getGlobalVariable(0));
+    vector<Vec3> b3;
+    integrator.getPerDofVariable(0, b3);
+    ASSERT_EQUAL_VEC(b1[0], b3[0], 1e-6);
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -1107,6 +1213,9 @@ int main(int argc, char* argv[]) {
         testAlternatingGroups();
         testUpdateContextState();
         testVectorFunctions();
+        testRecordEnergy();
+        testInitialTemperature();
+        testCheckpoint();
         runPlatformTests();
     }
     catch(const exception& e) {

@@ -32,6 +32,7 @@
 #include "openmm/System.h"
 #include "CudaArray.h"
 #include "CudaContext.h"
+#include "CudaNonbondedUtilities.h"
 #include "CudaSort.h"
 #include <cufft.h>
 
@@ -44,7 +45,7 @@ class CudaCalcAmoebaGeneralizedKirkwoodForceKernel;
  */
 class CudaCalcAmoebaBondForceKernel : public CalcAmoebaBondForceKernel {
 public:
-    CudaCalcAmoebaBondForceKernel(std::string name, 
+    CudaCalcAmoebaBondForceKernel(const std::string& name,
                                           const Platform& platform,
                                           CudaContext& cu,
                                           const System& system);
@@ -84,7 +85,7 @@ private:
  */
 class CudaCalcAmoebaAngleForceKernel : public CalcAmoebaAngleForceKernel {
 public:
-    CudaCalcAmoebaAngleForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaAngleForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -121,7 +122,7 @@ private:
  */
 class CudaCalcAmoebaInPlaneAngleForceKernel : public CalcAmoebaInPlaneAngleForceKernel {
 public:
-    CudaCalcAmoebaInPlaneAngleForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaInPlaneAngleForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -158,7 +159,7 @@ private:
  */
 class CudaCalcAmoebaPiTorsionForceKernel : public CalcAmoebaPiTorsionForceKernel {
 public:
-    CudaCalcAmoebaPiTorsionForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaPiTorsionForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -195,7 +196,7 @@ private:
  */
 class CudaCalcAmoebaStretchBendForceKernel : public CalcAmoebaStretchBendForceKernel {
 public:
-    CudaCalcAmoebaStretchBendForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaStretchBendForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -233,7 +234,7 @@ private:
  */
 class CudaCalcAmoebaOutOfPlaneBendForceKernel : public CalcAmoebaOutOfPlaneBendForceKernel {
 public:
-    CudaCalcAmoebaOutOfPlaneBendForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaOutOfPlaneBendForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -270,7 +271,7 @@ private:
  */
 class CudaCalcAmoebaTorsionTorsionForceKernel : public CalcAmoebaTorsionTorsionForceKernel {
 public:
-    CudaCalcAmoebaTorsionTorsionForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaTorsionTorsionForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -303,7 +304,7 @@ private:
  */
 class CudaCalcAmoebaMultipoleForceKernel : public CalcAmoebaMultipoleForceKernel {
 public:
-    CudaCalcAmoebaMultipoleForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaMultipoleForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     ~CudaCalcAmoebaMultipoleForceKernel();
     /**
      * Initialize the kernel.
@@ -381,16 +382,6 @@ public:
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
 private:
     class ForceInfo;
-    class SortTrait : public CudaSort::SortTrait {
-        int getDataSize() const {return 8;}
-        int getKeySize() const {return 4;}
-        const char* getDataType() const {return "int2";}
-        const char* getKeyType() const {return "int";}
-        const char* getMinKey() const {return "(-2147483647 - 1)";}
-        const char* getMaxKey() const {return "2147483647";}
-        const char* getMaxValue() const {return "make_int2(2147483647, 2147483647)";}
-        const char* getSortKey() const {return "value.y";}
-    };
     void initializeScaleFactors();
     void computeInducedField(void** recipBoxVectorPointer);
     bool iterateDipolesByDIIS(int iteration);
@@ -451,14 +442,12 @@ private:
     CudaArray pmeBsplineModuliX;
     CudaArray pmeBsplineModuliY;
     CudaArray pmeBsplineModuliZ;
-    CudaArray pmeIgrid;
     CudaArray pmePhi;
     CudaArray pmePhid;
     CudaArray pmePhip;
     CudaArray pmePhidp;
     CudaArray pmeCphi;
     CudaArray lastPositions;
-    CudaSort* sort;
     cufftHandle fft;
     CUfunction computeMomentsKernel, recordInducedDipolesKernel, computeFixedFieldKernel, computeInducedFieldKernel, updateInducedFieldKernel, electrostaticsKernel, mapTorqueKernel;
     CUfunction pmeSpreadFixedMultipolesKernel, pmeSpreadInducedDipolesKernel, pmeFinishSpreadChargeKernel, pmeConvolutionKernel;
@@ -477,7 +466,7 @@ private:
  */
 class CudaCalcAmoebaGeneralizedKirkwoodForceKernel : public CalcAmoebaGeneralizedKirkwoodForceKernel {
 public:
-    CudaCalcAmoebaGeneralizedKirkwoodForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaGeneralizedKirkwoodForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -552,13 +541,13 @@ private:
  */
 class CudaCalcAmoebaVdwForceKernel : public CalcAmoebaVdwForceKernel {
 public:
-    CudaCalcAmoebaVdwForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaVdwForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     ~CudaCalcAmoebaVdwForceKernel();
     /**
      * Initialize the kernel.
      * 
      * @param system     the System this kernel will be applied to
-     * @param force      the AmoebaMultipoleForce this kernel will be used for
+     * @param force      the AmoebaVdwForce this kernel will be used for
      */
     void initialize(const System& system, const AmoebaVdwForce& force);
     /**
@@ -582,6 +571,18 @@ private:
     CudaContext& cu;
     const System& system;
     bool hasInitializedNonbonded;
+
+    // True if the AmoebaVdwForce AlchemicalMethod is not None.
+    bool hasAlchemical;
+    // Pinned host memory; allocated if necessary in initialize, and freed in the destructor.
+    void* vdwLambdaPinnedBuffer;
+    // Device memory for the alchemical state.
+    CudaArray vdwLambda;
+    // Only update device memory when lambda changes.
+    float currentVdwLambda;
+    // Per particle alchemical flag.
+    CudaArray isAlchemical;
+
     double dispersionCoefficient;
     CudaArray sigmaEpsilon;
     CudaArray bondReductionAtoms;
@@ -597,7 +598,7 @@ private:
  */
 class CudaCalcAmoebaWcaDispersionForceKernel : public CalcAmoebaWcaDispersionForceKernel {
 public:
-    CudaCalcAmoebaWcaDispersionForceKernel(std::string name, const Platform& platform, CudaContext& cu, const System& system);
+    CudaCalcAmoebaWcaDispersionForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
     /**
      * Initialize the kernel.
      * 
@@ -628,6 +629,136 @@ private:
     double totalMaximumDispersionEnergy;
     CudaArray radiusEpsilon;
     CUfunction forceKernel;
+};
+
+/**
+ * This kernel is invoked by HippoNonbondedForce to calculate the forces acting on the system and the energy of the system.
+ */
+class CudaCalcHippoNonbondedForceKernel : public CalcHippoNonbondedForceKernel {
+public:
+    CudaCalcHippoNonbondedForceKernel(const std::string& name, const Platform& platform, CudaContext& cu, const System& system);
+    ~CudaCalcHippoNonbondedForceKernel();
+    /**
+     * Initialize the kernel.
+     * 
+     * @param system     the System this kernel will be applied to
+     * @param force      the HippoNonbondedForce this kernel will be used for
+     */
+    void initialize(const System& system, const HippoNonbondedForce& force);
+    /**
+     * Execute the kernel to calculate the forces and/or energy.
+     *
+     * @param context        the context in which to execute this kernel
+     * @param includeForces  true if forces should be calculated
+     * @param includeEnergy  true if the energy should be calculated
+     * @return the potential energy due to the force
+     */
+    double execute(ContextImpl& context, bool includeForces, bool includeEnergy);
+    /**
+     * Get the induced dipole moments of all particles.
+     * 
+     * @param context    the Context for which to get the induced dipoles
+     * @param dipoles    the induced dipole moment of particle i is stored into the i'th element
+     */
+    void getInducedDipoles(ContextImpl& context, std::vector<Vec3>& dipoles);
+    /**
+     * Get the fixed dipole moments of all particles in the global reference frame.
+     * 
+     * @param context    the Context for which to get the fixed dipoles
+     * @param dipoles    the fixed dipole moment of particle i is stored into the i'th element
+     */
+    void getLabFramePermanentDipoles(ContextImpl& context, std::vector<Vec3>& dipoles);
+    /** 
+     * Calculate the electrostatic potential given vector of grid coordinates.
+     *
+     * @param context                      context
+     * @param inputGrid                    input grid coordinates
+     * @param outputElectrostaticPotential output potential 
+     */
+    void getElectrostaticPotential(ContextImpl& context, const std::vector< Vec3 >& inputGrid,
+                                   std::vector< double >& outputElectrostaticPotential);
+    /**
+     * Copy changed parameters over to a context.
+     *
+     * @param context    the context to copy parameters to
+     * @param force      the HippoNonbondedForce to copy the parameters from
+     */
+    void copyParametersToContext(ContextImpl& context, const HippoNonbondedForce& force);
+    /**
+     * Get the parameters being used for PME.
+     * 
+     * @param alpha   the separation parameter
+     * @param nx      the number of grid points along the X axis
+     * @param ny      the number of grid points along the Y axis
+     * @param nz      the number of grid points along the Z axis
+     */
+    void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
+    /**
+     * Get the parameters being used for dispersion PME.
+     * 
+     * @param alpha   the separation parameter
+     * @param nx      the number of grid points along the X axis
+     * @param ny      the number of grid points along the Y axis
+     * @param nz      the number of grid points along the Z axis
+     */
+    void getDPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
+private:
+    class ForceInfo;
+    class TorquePostComputation;
+    class SortTrait : public CudaSort::SortTrait {
+        int getDataSize() const {return 8;}
+        int getKeySize() const {return 4;}
+        const char* getDataType() const {return "int2";}
+        const char* getKeyType() const {return "int";}
+        const char* getMinKey() const {return "(-2147483647-1)";}
+        const char* getMaxKey() const {return "2147483647";}
+        const char* getMaxValue() const {return "make_int2(2147483647, 2147483647)";}
+        const char* getSortKey() const {return "value.y";}
+    };
+    void computeInducedField(void** recipBoxVectorPointer, int optOrder);
+    void computeExtrapolatedDipoles(void** recipBoxVectorPointer);
+    void ensureMultipolesValid(ContextImpl& context);
+    void addTorquesToForces();
+    void createFieldKernel(const std::string& interactionSrc, std::vector<CudaArray*> params, CudaArray& fieldBuffer,
+        CUfunction& kernel, std::vector<void*>& args, CUfunction& exceptionKernel, std::vector<void*>& exceptionArgs,
+        CudaArray& exceptionScale);
+    int numParticles, maxExtrapolationOrder, maxTiles;
+    int gridSizeX, gridSizeY, gridSizeZ;
+    int dispersionGridSizeX, dispersionGridSizeY, dispersionGridSizeZ;
+    double pmeAlpha, dpmeAlpha, cutoff;
+    bool usePME, hasInitializedKernels, hasInitializedFFT, multipolesAreValid;
+    std::vector<double> extrapolationCoefficients;
+    CudaContext& cu;
+    const System& system;
+    CudaArray multipoleParticles;
+    CudaArray coreCharge, valenceCharge, alpha, epsilon, damping, c6, pauliK, pauliQ, pauliAlpha, polarizability;
+    CudaArray localDipoles, labDipoles, fracDipoles;
+    CudaArray localQuadrupoles, labQuadrupoles[5], fracQuadrupoles;
+    CudaArray field;
+    CudaArray inducedField;
+    CudaArray torque;
+    CudaArray inducedDipole;
+    CudaArray extrapolatedDipole, extrapolatedPhi;
+    CudaArray pmeGrid1, pmeGrid2;
+    CudaArray pmeAtomGridIndex;
+    CudaArray pmeBsplineModuliX, pmeBsplineModuliY, pmeBsplineModuliZ;
+    CudaArray dpmeBsplineModuliX, dpmeBsplineModuliY, dpmeBsplineModuliZ;
+    CudaArray pmePhi, pmePhidp, pmeCphi;
+    CudaArray lastPositions;
+    CudaArray exceptionScales[6];
+    CudaArray exceptionAtoms;
+    CudaSort* sort;
+    cufftHandle fftForward, fftBackward, dfftForward, dfftBackward;
+    CUfunction computeMomentsKernel, fixedFieldKernel, fixedFieldExceptionKernel, mutualFieldKernel, mutualFieldExceptionKernel, computeExceptionsKernel;
+    CUfunction recordInducedDipolesKernel, mapTorqueKernel;
+    CUfunction pmeSpreadFixedMultipolesKernel, pmeSpreadInducedDipolesKernel, pmeFinishSpreadChargeKernel, pmeConvolutionKernel;
+    CUfunction pmeFixedPotentialKernel, pmeInducedPotentialKernel, pmeFixedForceKernel, pmeInducedForceKernel, pmeRecordInducedFieldDipolesKernel;
+    CUfunction pmeSelfEnergyKernel;
+    CUfunction dpmeGridIndexKernel, dpmeSpreadChargeKernel, dpmeFinishSpreadChargeKernel, dpmeEvalEnergyKernel, dpmeConvolutionKernel, dpmeInterpolateForceKernel;
+    CUfunction initExtrapolatedKernel, iterateExtrapolatedKernel, computeExtrapolatedKernel, polarizationEnergyKernel;
+    CUfunction pmeTransformMultipolesKernel, pmeTransformPotentialKernel;
+    std::vector<void*> fixedFieldArgs, fixedFieldExceptionArgs, mutualFieldArgs, mutualFieldExceptionArgs, computeExceptionsArgs;
+    static const int PmeOrder = 5;
 };
 
 } // namespace OpenMM

@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2008-2017 Stanford University and the Authors.      *
+ * Portions copyright (c) 2008-2019 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -51,12 +51,12 @@ using namespace std;
     }
 
 
-#ifdef OPENMM_CUDA_BUILDING_STATIC_LIBRARY
+#ifdef OPENMM_COMMON_BUILDING_STATIC_LIBRARY
 extern "C" void registerCudaPlatform() {
     Platform::registerPlatform(new CudaPlatform());
 }
 #else
-extern "C" OPENMM_EXPORT_CUDA void registerPlatforms() {
+extern "C" OPENMM_EXPORT_COMMON void registerPlatforms() {
     Platform::registerPlatform(new CudaPlatform());
 }
 #endif
@@ -96,7 +96,9 @@ CudaPlatform::CudaPlatform() {
     registerKernelFactory(CalcCustomManyParticleForceKernel::Name(), factory);
     registerKernelFactory(CalcGayBerneForceKernel::Name(), factory);
     registerKernelFactory(IntegrateVerletStepKernel::Name(), factory);
+    registerKernelFactory(IntegrateNoseHooverStepKernel::Name(), factory);
     registerKernelFactory(IntegrateLangevinStepKernel::Name(), factory);
+    registerKernelFactory(IntegrateLangevinMiddleStepKernel::Name(), factory);
     registerKernelFactory(IntegrateBrownianStepKernel::Name(), factory);
     registerKernelFactory(IntegrateVariableVerletStepKernel::Name(), factory);
     registerKernelFactory(IntegrateVariableLangevinStepKernel::Name(), factory);

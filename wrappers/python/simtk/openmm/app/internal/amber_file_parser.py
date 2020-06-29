@@ -678,7 +678,7 @@ def readAmberSystem(topology, prmtop_filename=None, prmtop_loader=None, shake=No
     if shake in ('all-bonds', 'h-angles'):
         for (iAtom, jAtom, k, rMin) in prmtop.getBondsNoH():
             system.addConstraint(iAtom, jAtom, rMin)
-    if rigidWater and shake == None:
+    if rigidWater and shake is None:
         for (iAtom, jAtom, k, rMin) in prmtop.getBondsWithH():
             if isWater[iAtom] and isWater[jAtom]:
                 system.addConstraint(iAtom, jAtom, rMin)
@@ -989,6 +989,8 @@ def readAmberSystem(topology, prmtop_filename=None, prmtop_loader=None, shake=No
                 gb = mm.GBSAOBCForce()
                 gb.setSoluteDielectric(soluteDielectric)
                 gb.setSolventDielectric(solventDielectric)
+                if gbsaModel is None:
+                    gb.setSurfaceAreaEnergy(0)
         elif gbmodel == 'GBn':
             gb = customgb.GBSAGBnForce(solventDielectric, soluteDielectric, gbsaModel, cutoff, implicitSolventKappa)
         elif gbmodel == 'GBn2':

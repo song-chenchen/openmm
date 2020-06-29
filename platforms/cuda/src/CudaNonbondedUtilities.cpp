@@ -27,6 +27,7 @@
 #include "openmm/OpenMMException.h"
 #include "CudaNonbondedUtilities.h"
 #include "CudaArray.h"
+#include "CudaContext.h"
 #include "CudaKernelSources.h"
 #include "CudaExpressionUtilities.h"
 #include "CudaSort.h"
@@ -73,6 +74,7 @@ CudaNonbondedUtilities::CudaNonbondedUtilities(CudaContext& context) : context(c
     CHECK_RESULT(cuMemHostAlloc((void**) &pinnedCountBuffer, 2*sizeof(int), CU_MEMHOSTALLOC_PORTABLE));
     numForceThreadBlocks = 4*multiprocessors;
     forceThreadBlockSize = (context.getComputeCapability() < 2.0 ? 128 : 256);
+    setKernelSource(CudaKernelSources::nonbonded);
 }
 
 CudaNonbondedUtilities::~CudaNonbondedUtilities() {
@@ -81,6 +83,10 @@ CudaNonbondedUtilities::~CudaNonbondedUtilities() {
     if (pinnedCountBuffer != NULL)
         cuMemFreeHost(pinnedCountBuffer);
     cuEventDestroy(downloadCountEvent);
+}
+
+void CudaNonbondedUtilities::addInteraction(bool usesCutoff, bool usesPeriodic, bool usesExclusions, double cutoffDistance, const vector<vector<int> >& exclusionList, const string& kernel, int forceGroup) {
+    addInteraction(usesCutoff, usesPeriodic, usesExclusions, cutoffDistance, exclusionList, kernel, forceGroup, false);
 }
 
 void CudaNonbondedUtilities::addInteraction(bool usesCutoff, bool usesPeriodic, bool usesExclusions, double cutoffDistance, const vector<vector<int> >& exclusionList, const string& kernel, int forceGroup, bool supportsPairList) {
@@ -109,8 +115,18 @@ void CudaNonbondedUtilities::addInteraction(bool usesCutoff, bool usesPeriodic, 
     }
 }
 
+void CudaNonbondedUtilities::addParameter(ComputeParameterInfo parameter) {
+    parameters.push_back(ParameterInfo(parameter.getName(), parameter.getComponentType(), parameter.getNumComponents(),
+            parameter.getSize(), context.unwrap(parameter.getArray()).getDevicePointer()));
+}
+
 void CudaNonbondedUtilities::addParameter(const ParameterInfo& parameter) {
     parameters.push_back(parameter);
+}
+
+void CudaNonbondedUtilities::addArgument(ComputeParameterInfo parameter) {
+    arguments.push_back(ParameterInfo(parameter.getName(), parameter.getComponentType(), parameter.getNumComponents(),
+            parameter.getSize(), context.unwrap(parameter.getArray()).getDevicePointer()));
 }
 
 void CudaNonbondedUtilities::addArgument(const ParameterInfo& parameter) {
@@ -510,13 +526,17 @@ CUfunction CudaNonbondedUtilities::createInteractionKernel(const string& source,
     replacements["ATOM_PARAMETER_DATA"] = localData.str();
     stringstream args;
     for (int i = 0; i < (int) params.size(); i++) {
-        args << ", const ";
+        args << ", ";
+        if (params[i].isConstant())
+            args << "const ";
         args << params[i].getType();
         args << "* __restrict__ global_";
         args << params[i].getName();
     }
     for (int i = 0; i < (int) arguments.size(); i++) {
-        args << ", const ";
+        args << ", ";
+        if (arguments[i].isConstant())
+            args << "const ";
         args << arguments[i].getType();
         args << "* __restrict__ ";
         args << arguments[i].getName();
@@ -710,7 +730,11 @@ CUfunction CudaNonbondedUtilities::createInteractionKernel(const string& source,
     defines["LAST_EXCLUSION_TILE"] = context.intToString(endExclusionIndex);
     if ((localDataSize/4)%2 == 0 && !context.getUseDoublePrecision())
         defines["PARAMETER_SIZE_IS_EVEN"] = "1";
-    CUmodule program = context.createModule(CudaKernelSources::vectorOps+context.replaceStrings(CudaKernelSources::nonbonded, replacements), defines);
+    CUmodule program = context.createModule(CudaKernelSources::vectorOps+context.replaceStrings(kernelSource, replacements), defines);
     CUfunction kernel = context.getKernel(program, "computeNonbonded");
     return kernel;
+}
+
+void CudaNonbondedUtilities::setKernelSource(const string& source) {
+    kernelSource = source;
 }
