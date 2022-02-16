@@ -353,7 +353,10 @@ public:
         /**
          * Extrapolated perturbation theory
          */
-        Extrapolated = 2
+        Extrapolated = 2,
+
+        // QM/MM
+        Zero = 3
     };
 
     /**
@@ -667,6 +670,89 @@ public:
                                          const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
                                          const std::vector<Vec3>& inputGrid,
                                          std::vector<double>& outputPotential);
+
+    // QM/MM interface
+    void calculateLabFramePermanentMultipoles(const std::vector<Vec3>& particlePositions,
+                                           const std::vector<double>& charges,
+                                           const std::vector<double>& dipoles,
+                                           const std::vector<double>& quadrupoles,
+                                           const std::vector<double>& tholes,
+                                           const std::vector<double>& dampingFactors,
+                                           const std::vector<double>& polarity,
+                                           const std::vector<int>& axisTypes,
+                                           const std::vector<int>& multipoleAtomZs,
+                                           const std::vector<int>& multipoleAtomXs,
+                                           const std::vector<int>& multipoleAtomYs,
+                                           const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                           std::vector<double>& outputRotatedPermanentCharges,
+                                           std::vector<double>& outputRotatedPermanentDipoles,
+                                           std::vector<double>& outputRotatedPermanentQuadrupoles
+                                           );
+
+    void calculatePermanentMultipoleFields(const std::vector<Vec3>& particlePositions,
+                                           const std::vector<double>& charges,
+                                           const std::vector<double>& dipoles,
+                                           const std::vector<double>& quadrupoles,
+                                           const std::vector<double>& tholes,
+                                           const std::vector<double>& dampingFactors,
+                                           const std::vector<double>& polarity,
+                                           const std::vector<int>& axisTypes,
+                                           const std::vector<int>& multipoleAtomZs,
+                                           const std::vector<int>& multipoleAtomXs,
+                                           const std::vector<int>& multipoleAtomYs,
+                                           const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                           std::vector<Vec3>& outputFields
+                                           );
+
+    void calculateForcesFromTorques(const std::vector<Vec3>& particlePositions,
+                                           const std::vector<double>& charges,
+                                           const std::vector<double>& dipoles,
+                                           const std::vector<double>& quadrupoles,
+                                           const std::vector<double>& tholes,
+                                           const std::vector<double>& dampingFactors,
+                                           const std::vector<double>& polarity,
+                                           const std::vector<int>& axisTypes,
+                                           const std::vector<int>& multipoleAtomZs,
+                                           const std::vector<int>& multipoleAtomXs,
+                                           const std::vector<int>& multipoleAtomYs,
+                                           const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                           const std::vector<Vec3>& torques,
+                                           std::vector<Vec3>& forces
+                                           );
+
+
+    void calculateForcesFromInducedDipoles(const std::vector<Vec3>& particlePositions,
+                                           const std::vector<double>& charges,
+                                           const std::vector<double>& dipoles,
+                                           const std::vector<double>& quadrupoles,
+                                           const std::vector<double>& tholes,
+                                           const std::vector<double>& dampingFactors,
+                                           const std::vector<double>& polarity,
+                                           const std::vector<int>& axisTypes,
+                                           const std::vector<int>& multipoleAtomZs,
+                                           const std::vector<int>& multipoleAtomXs,
+                                           const std::vector<int>& multipoleAtomYs,
+                                           const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                           const std::vector<Vec3>& inducedDipoles,
+                                           const std::vector<Vec3>& inducedPolarDipoles,
+                                           std::vector<Vec3>& forces
+                                           );
+
+     
+    void calculateInducedDipoleMutualIxns(const std::vector<Vec3>& particlePositions,
+                                           const std::vector<double>& charges,
+                                           const std::vector<double>& dipoles,
+                                           const std::vector<double>& quadrupoles,
+                                           const std::vector<double>& tholes,
+                                           const std::vector<double>& dampingFactors,
+                                           const std::vector<double>& polarity,
+                                           const std::vector<int>& axisTypes,
+                                           const std::vector<int>& multipoleAtomZs,
+                                           const std::vector<int>& multipoleAtomXs,
+                                           const std::vector<int>& multipoleAtomYs,
+                                           const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                           std::vector<double>& Matrix
+                                           );
 
 protected:
 
@@ -1005,6 +1091,16 @@ protected:
     virtual void calculateInducedDipolePairIxns(const MultipoleParticleData& particleI, const MultipoleParticleData& particleJ,
                                                 std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields);
 
+    // QM/MM interface
+    void calculateInducedDipolePairMutualIxn(const MultipoleParticleData& particleI,
+                                             const MultipoleParticleData& particleJ,
+                                             const vector<Vec3>& inducedDipoles,
+                                             vector<Vec3>& inducedDipoleField
+                                             );
+
+
+
+
     /**
      * Calculate induced dipole fields.
      * 
@@ -1225,6 +1321,23 @@ protected:
      * 
      */
     virtual void getPeriodicDelta(Vec3& deltaR) const {};
+
+
+    // QM/MM
+    void setupPermanent(const std::vector<OpenMM::Vec3>& particlePositions,
+               const std::vector<double>& charges,
+               const std::vector<double>& dipoles,
+               const std::vector<double>& quadrupoles,
+               const std::vector<double>& tholes,
+               const std::vector<double>& dampingFactors,
+               const std::vector<double>& polarity,
+               const std::vector<int>& axisTypes,
+               const std::vector<int>& multipoleAtomZs,
+               const std::vector<int>& multipoleAtomXs,
+               const std::vector<int>& multipoleAtomYs,
+               const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
+               std::vector<MultipoleParticleData>& particleData);
+
 };
 
 class AmoebaReferenceGeneralizedKirkwoodMultipoleForce : public AmoebaReferenceMultipoleForce {

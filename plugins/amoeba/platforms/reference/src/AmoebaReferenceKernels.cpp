@@ -23,7 +23,7 @@
  * You should have received a copy of the GNU Lesser General Public License   *
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.      *
  * -------------------------------------------------------------------------- */
-
+#include <stdio.h>
 #include "AmoebaReferenceKernels.h"
 #include "AmoebaReferenceBondForce.h"
 #include "AmoebaReferenceAngleForce.h"
@@ -688,11 +688,16 @@ AmoebaReferenceMultipoleForce* ReferenceCalcAmoebaMultipoleForceKernel::setupAmo
         amoebaReferenceMultipoleForce->setPolarizationType(AmoebaReferenceMultipoleForce::Mutual);
         amoebaReferenceMultipoleForce->setMutualInducedDipoleTargetEpsilon(mutualInducedTargetEpsilon);
         amoebaReferenceMultipoleForce->setMaximumMutualInducedDipoleIterations(mutualInducedMaxIterations);
+        printf("Mutual\n");
     } else if (polarizationType == AmoebaMultipoleForce::Direct) {
         amoebaReferenceMultipoleForce->setPolarizationType(AmoebaReferenceMultipoleForce::Direct);
+        printf("Direct\n");
     } else if (polarizationType == AmoebaMultipoleForce::Extrapolated) {
         amoebaReferenceMultipoleForce->setPolarizationType(AmoebaReferenceMultipoleForce::Extrapolated);
         amoebaReferenceMultipoleForce->setExtrapolationCoefficients(extrapolationCoefficients);
+    } else if (polarizationType == AmoebaMultipoleForce::Zero) {
+        amoebaReferenceMultipoleForce->setPolarizationType(AmoebaReferenceMultipoleForce::Zero);
+        printf("Zero\n");
     } else {
         throw OpenMMException("Polarization type not recognzied.");
     }
@@ -865,6 +870,80 @@ void ReferenceCalcAmoebaMultipoleForceKernel::getPMEParameters(double& alpha, in
     nx = pmeGridDimension[0];
     ny = pmeGridDimension[1];
     nz = pmeGridDimension[2];
+}
+
+// QM/MM interface
+void ReferenceCalcAmoebaMultipoleForceKernel::getLabFramePermanentMultipoles(ContextImpl& context, vector<double>& outputCharges, vector<double>& outputDipoles, vector<double>& outputQuadrupoles) {
+
+    // Create an AmoebaReferenceMultipoleForce to do the calculation.
+    
+    AmoebaReferenceMultipoleForce* amoebaReferenceMultipoleForce = setupAmoebaReferenceMultipoleForce(context);
+    vector<Vec3>& posData = extractPositions(context);
+    
+    // Retrieve the permanent dipoles in the lab frame.
+    amoebaReferenceMultipoleForce->calculateLabFramePermanentMultipoles(posData, charges, dipoles, quadrupoles, tholes, 
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, outputCharges, outputDipoles, outputQuadrupoles);
+    delete amoebaReferenceMultipoleForce;
+}
+
+void ReferenceCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields) {
+
+    // Create an AmoebaReferenceMultipoleForce to do the calculation.
+    
+    AmoebaReferenceMultipoleForce* amoebaReferenceMultipoleForce = setupAmoebaReferenceMultipoleForce(context);
+    vector<Vec3>& posData = extractPositions(context);
+    
+    // Retrieve the permanent dipoles in the lab frame.
+   
+    amoebaReferenceMultipoleForce->calculatePermanentMultipoleFields(posData, charges, dipoles, quadrupoles, tholes, 
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, outputFields);
+
+    delete amoebaReferenceMultipoleForce;
+}
+
+void ReferenceCalcAmoebaMultipoleForceKernel::getForcesFromTorques(ContextImpl& context, const vector<Vec3>& torques, vector<Vec3>& forces ) {
+
+    // Create an AmoebaReferenceMultipoleForce to do the calculation.
+    
+    AmoebaReferenceMultipoleForce* amoebaReferenceMultipoleForce = setupAmoebaReferenceMultipoleForce(context);
+    vector<Vec3>& posData = extractPositions(context);
+    
+    // Retrieve the permanent dipoles in the lab frame.
+   
+    amoebaReferenceMultipoleForce->calculateForcesFromTorques(posData, charges, dipoles, quadrupoles, tholes, 
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, torques, forces);
+
+    delete amoebaReferenceMultipoleForce;
+}
+
+void ReferenceCalcAmoebaMultipoleForceKernel::getForcesFromInducedDipoles(ContextImpl& context, const vector<Vec3>& inducedDipoles, const vector<Vec3>& inducedPolarDipoles, vector<Vec3>& forces ) {
+
+    // Create an AmoebaReferenceMultipoleForce to do the calculation.
+    
+    AmoebaReferenceMultipoleForce* amoebaReferenceMultipoleForce = setupAmoebaReferenceMultipoleForce(context);
+    vector<Vec3>& posData = extractPositions(context);
+    
+    // Retrieve the permanent dipoles in the lab frame.
+   
+    amoebaReferenceMultipoleForce->calculateForcesFromInducedDipoles(posData, charges, dipoles, quadrupoles, tholes, 
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, inducedDipoles, inducedPolarDipoles, forces);
+
+    delete amoebaReferenceMultipoleForce;
+}
+
+void ReferenceCalcAmoebaMultipoleForceKernel::getInducedDipoleMutualIxns(ContextImpl& context, vector<double>& Matrix) {
+
+    // Create an AmoebaReferenceMultipoleForce to do the calculation.
+    
+    AmoebaReferenceMultipoleForce* amoebaReferenceMultipoleForce = setupAmoebaReferenceMultipoleForce(context);
+    vector<Vec3>& posData = extractPositions(context);
+    
+    // Retrieve the permanent dipoles in the lab frame.
+   
+    amoebaReferenceMultipoleForce->calculateInducedDipoleMutualIxns(posData, charges, dipoles, quadrupoles, tholes, 
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, Matrix);
+
+    delete amoebaReferenceMultipoleForce;
 }
 
 /* -------------------------------------------------------------------------- *
