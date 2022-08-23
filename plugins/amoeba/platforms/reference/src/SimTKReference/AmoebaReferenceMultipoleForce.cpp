@@ -21,7 +21,7 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-
+#include <stdio.h>
 #include "AmoebaReferenceMultipoleForce.h"
 #include "jama_svd.h"
 #include <algorithm>
@@ -1153,7 +1153,6 @@ void AmoebaReferenceMultipoleForce::calculateInducedDipoles(const vector<Multipo
     updateInducedDipoleField.push_back(UpdateInducedDipoleFieldStruct(_fixedMultipoleFieldPolar, _inducedDipolePolar, _ptDipoleP, _ptDipoleFieldGradientP));
 
     initializeInducedDipoles(updateInducedDipoleField);
-
     if (getPolarizationType() == AmoebaReferenceMultipoleForce::Direct) {
         setMutualInducedDipoleConverged(true);
         return;
@@ -1221,12 +1220,14 @@ double AmoebaReferenceMultipoleForce::calculateElectrostaticPairIxn(const Multip
         double valID = 0.0;
         double valJP = 0.0;
         double valJD = 0.0;
+
         for (int jj = 0; jj < 3; jj++) {
             valIP += inducedDipoleRotationMatrix[ii][jj] * _inducedDipolePolar[iIndex][jj];
             valID += inducedDipoleRotationMatrix[ii][jj] * _inducedDipole[iIndex][jj];
             valJP += inducedDipoleRotationMatrix[ii][jj] * _inducedDipolePolar[kIndex][jj];
             valJD += inducedDipoleRotationMatrix[ii][jj] * _inducedDipole[kIndex][jj];
         }
+
         qiUindI[ii] = valID;
         qiUinpI[ii] = valIP;
         qiUindJ[ii] = valJD;
@@ -1784,9 +1785,7 @@ void AmoebaReferenceMultipoleForce::mapTorqueToForce(vector<MultipoleParticleDat
                                                      vector<Vec3>& torques,
                                                      vector<Vec3>& forces) const
 {
-
     // map torques to forces
-
     for (unsigned int ii = 0; ii < particleData.size(); ii++) {
         if (axisTypes[ii] != AmoebaMultipoleForce::NoAxisType) {
              mapTorqueToForceForParticle(particleData[ii],
@@ -1916,7 +1915,6 @@ double AmoebaReferenceMultipoleForce::calculateForceAndEnergy(const vector<Vec3>
                                                              const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
                                                              vector<Vec3>& forces)
 {
-
     // setup, including calculating induced dipoles
     // calculate electrostatic ixns including torques
     // map torques to forces
@@ -1929,9 +1927,8 @@ double AmoebaReferenceMultipoleForce::calculateForceAndEnergy(const vector<Vec3>
     vector<Vec3> torques;
     initializeVec3Vector(torques);
     double energy = calculateElectrostatic(particleData, torques, forces);
-
+    printf("OpenMM- AMOEBA Energy: % .12f\n", energy);
     mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, axisTypes, torques, forces);
-
     return energy;
 }
 
@@ -2271,8 +2268,9 @@ void AmoebaReferenceMultipoleForce::calculateLabFramePermanentMultipoles(const v
     // save quadrupole
     outputRotatedPermanentQuadrupoles.resize(_numParticles*6);
     for (int i = 0, idx=0; i < _numParticles; i++, idx+=6){
-        for(int j=0; j< 6; j++)
+        for(int j=0; j< 6; j++){
             outputRotatedPermanentQuadrupoles[idx+j] = particleData[i].quadrupole[j];
+        }
     }
 }
 
@@ -2306,7 +2304,7 @@ void AmoebaReferenceMultipoleForce::calculatePermanentMultipoleFields(const vect
     // save charge
     outputFields.resize(_numParticles); 
     for (int i = 0; i < _numParticles; i++)
-        outputFields[i] = _fixedMultipoleField[i];
+        outputFields[i] = _fixedMultipoleField[i]* _electric ; // FACTOR
 }
 
 void AmoebaReferenceMultipoleForce::calculateForcesFromTorques(const vector<Vec3>& particlePositions,
@@ -2429,21 +2427,15 @@ void AmoebaReferenceMultipoleForce::calculateInducedDipoleMutualIxns(const vecto
                                                                       const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
                                                                       vector<double>& Matrix 
         ) {
+
     // setup
     vector<MultipoleParticleData> particleData;
     setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
             dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
             multipoleAtomCovalentInfo, particleData);
 
-    // diagonal = 1.0/polar
     unsigned int dim = _numParticles*3;
     Matrix.resize(_numParticles*_numParticles*9);
-    for(unsigned int i=0, ii=0; i< _numParticles; i++, ii+=3){
-        for(int xid=0; xid< 3; xid++){
-            int idx = ii + xid;
-            Matrix[idx*dim+idx] = 1.0/particleData[i].polarity;
-        }
-    }
 
     // off-diagonal    
     vector<Vec3> inducedDipoles;
@@ -2465,11 +2457,25 @@ void AmoebaReferenceMultipoleForce::calculateInducedDipoleMutualIxns(const vecto
             unsigned int offset = iabs* dim;
             for(unsigned int jj = 0, jabs=0; jj< particleData.size(); jj++){
                 for(unsigned int xjd=0; xjd< 3; xjd ++, jabs++){
-                    Matrix[offset + jabs] = inducedDipoleFields[jj][xjd];
+                    Matrix[offset + jabs] = inducedDipoleFields[jj][xjd]; 
                 }
             }
         }
     }
+
+    // diagonal = 1.0/polar
+    for(unsigned int i=0, ii=0; i< _numParticles; i++, ii+=3){
+        for(int xid=0; xid< 3; xid++){
+            int idx = ii + xid;
+            Matrix[idx*dim+idx] = 1.0/particleData[i].polarity;
+        }
+    }
+
+    // FACTOR
+    for(unsigned int i=0; i< _numParticles*3; i++)
+        for(unsigned int j=0; j< _numParticles*3; j++)
+            Matrix[i*dim+j] *= _electric;
+
 }
 
 

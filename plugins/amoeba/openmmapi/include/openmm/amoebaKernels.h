@@ -380,7 +380,7 @@ public:
     virtual void getForcesFromTorques(ContextImpl& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces) = 0; 
 
     virtual void getForcesFromInducedDipoles(ContextImpl& context, const std::vector<Vec3>& dDipoles, const std::vector<Vec3>& pDipoles, std::vector<Vec3>& forces) = 0;  
-
+    virtual void getForcesBetweenInducedDipoles(ContextImpl& context, const std::vector<Vec3>& dDipoles, const std::vector<Vec3>& pDipoles, std::vector<Vec3>& forces) = 0;  
     virtual void getInducedDipoleMutualIxns(ContextImpl& context, std::vector<double>& Matrix) = 0;
 
 };

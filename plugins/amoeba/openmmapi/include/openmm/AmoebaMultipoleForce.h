@@ -455,8 +455,9 @@ public:
 
     void getForcesFromInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
 
+    void getForcesBetweenInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
+   
     void getInducedDipoleMutualIxns(Context& context, std::vector<double>& Matrix);
-     
 protected:
     ForceImpl* createImpl() const;
 private:

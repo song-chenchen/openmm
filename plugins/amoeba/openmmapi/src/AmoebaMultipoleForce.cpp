@@ -292,6 +292,11 @@ void AmoebaMultipoleForce::getForcesFromTorques(Context& context, const std::vec
 void AmoebaMultipoleForce::getForcesFromInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces) {
     dynamic_cast<AmoebaMultipoleForceImpl&>(getImplInContext(context)).getForcesFromInducedDipoles(getContextImpl(context), inducedDipoles, inducedPolarDipoles, forces);
 }
+void AmoebaMultipoleForce::getForcesBetweenInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces) {
+    dynamic_cast<AmoebaMultipoleForceImpl&>(getImplInContext(context)).getForcesBetweenInducedDipoles(getContextImpl(context), inducedDipoles, inducedPolarDipoles, forces);
+}
+
+
 
 
 void AmoebaMultipoleForce::getInducedDipoleMutualIxns(Context& context, std::vector<double>& Matrix) {

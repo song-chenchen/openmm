@@ -99,6 +99,7 @@ public:
     void getForcesFromTorques(ContextImpl& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces); 
 
     void getForcesFromInducedDipoles(ContextImpl& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
+    void getForcesBetweenInducedDipoles(ContextImpl& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
 
     void getInducedDipoleMutualIxns(ContextImpl& context, std::vector<double>& Matrix);
  

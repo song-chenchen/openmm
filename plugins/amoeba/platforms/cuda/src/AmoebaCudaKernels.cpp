@@ -2118,6 +2118,9 @@ void CudaCalcAmoebaMultipoleForceKernel::getForcesFromTorques(ContextImpl& conte
 void CudaCalcAmoebaMultipoleForceKernel::getForcesFromInducedDipoles(ContextImpl& context, const vector<Vec3>& inducedDipoles, const vector<Vec3>& inducedPolarDipoles, vector<Vec3>& forces ) {
     throw OpenMMException("getForcesFromInducedDipoles not implemented for cuda");
 }
+void CudaCalcAmoebaMultipoleForceKernel::getForcesBetweenInducedDipoles(ContextImpl& context, const vector<Vec3>& inducedDipoles, const vector<Vec3>& inducedPolarDipoles, vector<Vec3>& forces ) {
+    throw OpenMMException("getForcesBetweenInducedDipoles not implemented for cuda");
+}
 
 void CudaCalcAmoebaMultipoleForceKernel::getInducedDipoleMutualIxns(ContextImpl& context, vector<double>& Matrix) {
     throw OpenMMException("getInducedDipoleMutualIxns not implemented for cuda");
