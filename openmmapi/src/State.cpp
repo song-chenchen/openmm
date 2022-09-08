@@ -38,6 +38,9 @@ using namespace std;
 double State::getTime() const {
     return time;
 }
+long long State::getStepCount() const {
+    return stepCount;
+}
 const vector<Vec3>& State::getPositions() const {
     if ((types&Positions) == 0)
         throw OpenMMException("Invoked getPositions() on a State which does not contain positions.");
@@ -81,10 +84,20 @@ const map<string, double>& State::getEnergyParameterDerivatives() const {
         throw OpenMMException("Invoked getEnergyParameterDerivatives() on a State which does not contain parameter derivatives.");
     return energyParameterDerivatives;
 }
+const SerializationNode& State::getIntegratorParameters() const {
+    if ((types&IntegratorParameters) == 0)
+        throw OpenMMException("Invoked getPIntegratorarameters() on a State which does not contain integrator parameters.");
+    return integratorParameters;
+}
+SerializationNode& State::updateIntegratorParameters() {
+    types |= IntegratorParameters;
+    integratorParameters.setName("IntegratorParameters");
+    return integratorParameters;
+}
 int State::getDataTypes() const {
     return types;
 }
-State::State(double time) : types(0), time(time), ke(0), pe(0) {
+State::State(double time, long long stepCount) : types(0), time(time), stepCount(stepCount), ke(0), pe(0) {
 }
 State::State() : types(0), time(0.0), ke(0), pe(0) {
 }
@@ -125,7 +138,7 @@ void State::setPeriodicBoxVectors(const Vec3& a, const Vec3& b, const Vec3& c) {
     periodicBoxVectors[2] = c;
 }
 
-State::StateBuilder::StateBuilder(double time) : state(time) {
+State::StateBuilder::StateBuilder(double time, long long stepCount) : state(time, stepCount) {
 }
 
 State State::StateBuilder::getState() {
@@ -158,4 +171,8 @@ void State::StateBuilder::setEnergy(double ke, double pe) {
 
 void State::StateBuilder::setPeriodicBoxVectors(const Vec3& a, const Vec3& b, const Vec3& c) {
     state.setPeriodicBoxVectors(a, b, c);
+}
+
+SerializationNode& State::StateBuilder::updateIntegratorParameters() {
+    return state.updateIntegratorParameters();
 }

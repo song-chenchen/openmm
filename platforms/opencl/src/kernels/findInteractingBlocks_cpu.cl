@@ -69,7 +69,7 @@ __kernel void sortBoxData(__global const real2* restrict sortedBlock, __global c
  * This is called by findBlocksWithInteractions().  It compacts the list of blocks and writes them
  * to global memory.
  */
-void storeInteractionData(unsigned short x, unsigned short* buffer, int* atoms, int* numAtoms, int numValid, __global unsigned int* interactionCount,
+void storeInteractionData(int x, int* buffer, int* atoms, int* numAtoms, int numValid, __global unsigned int* interactionCount,
             __global int* interactingTiles, __global unsigned int* interactingAtoms, real4 periodicBoxSize, real4 invPeriodicBoxSize, real4 periodicBoxVecX,
             real4 periodicBoxVecY, real4 periodicBoxVecZ, __global const real4* posq, real4 blockCenterX, real4 blockSizeX, unsigned int maxTiles, bool finish) {
     real4 posBuffer[TILE_SIZE];
@@ -125,7 +125,7 @@ void storeInteractionData(unsigned short x, unsigned short* buffer, int* atoms, 
                 // The atoms buffer is full, so store it to global memory.
                 
                 int tilesToStore = BUFFER_SIZE/TILE_SIZE;
-                int baseIndex = atom_add(interactionCount, tilesToStore);
+                int baseIndex = ATOMIC_ADD(interactionCount, tilesToStore);
                 if (baseIndex+tilesToStore <= maxTiles) {
                     for (int i = 0; i < tilesToStore; i++) {
                         interactingTiles[baseIndex+i] = x;
@@ -142,7 +142,7 @@ void storeInteractionData(unsigned short x, unsigned short* buffer, int* atoms, 
         // There are some leftover atoms, so save them now.
         
         int tilesToStore = (*numAtoms+TILE_SIZE-1)/TILE_SIZE;
-        int baseIndex = atom_add(interactionCount, tilesToStore);
+        int baseIndex = ATOMIC_ADD(interactionCount, tilesToStore);
         if (baseIndex+tilesToStore <= maxTiles) {
             for (int i = 0; i < tilesToStore; i++) {
                 interactingTiles[baseIndex+i] = x;
@@ -167,7 +167,7 @@ __kernel void findBlocksWithInteractions(real4 periodicBoxSize, real4 invPeriodi
         __global const int* restrict rebuildNeighborList) {
     if (rebuildNeighborList[0] == 0)
         return; // The neighbor list doesn't need to be rebuilt.
-    unsigned short buffer[BUFFER_SIZE];
+    int buffer[BUFFER_SIZE];
     int atoms[BUFFER_SIZE];
     int exclusionsForX[MAX_EXCLUSIONS];
     int valuesInBuffer;
@@ -179,7 +179,7 @@ __kernel void findBlocksWithInteractions(real4 periodicBoxSize, real4 invPeriodi
         valuesInBuffer = 0;
         numAtoms = 0;
         real2 sortedKey = sortedBlocks[i];
-        unsigned short x = (unsigned short) sortedKey.y;
+        int x = (int) sortedKey.y;
         real4 blockCenterX = sortedBlockCenter[i];
         real4 blockSizeX = sortedBlockBoundingBox[i];
 
@@ -195,7 +195,7 @@ __kernel void findBlocksWithInteractions(real4 periodicBoxSize, real4 invPeriodi
         
         for (int j = i+1; j < NUM_BLOCKS; j++) {
             real2 sortedKey2 = sortedBlocks[j];
-            unsigned short y = (unsigned short) sortedKey2.y;
+            int y = (int) sortedKey2.y;
             bool hasExclusions = false;
             for (int k = 0; k < numExclusions; k++)
                 hasExclusions |= (exclusionsForX[k] == y);

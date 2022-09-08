@@ -8,7 +8,7 @@
  *                                                                            *
  * Portions copyright (c) 2019-2020 Stanford University and the Authors.      *
  * Authors: Andreas Krämer and Andrew C. Simmonett                            *
- * Contributors:                                                              *
+ * Contributors: Peter Eastman                                                *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person obtaining a    *
  * copy of this software and associated documentation files (the "Software"), *
@@ -70,6 +70,16 @@ NoseHooverIntegrator::~NoseHooverIntegrator() {}
 
 int NoseHooverIntegrator::addThermostat(double temperature, double collisionFrequency,
                                         int chainLength, int numMTS, int numYoshidaSuzuki) {
+    if (temperature < 0)
+        throw OpenMMException("NoseHooverIntegrator: temperature cannot be negative");
+    if (collisionFrequency <= 0)
+        throw OpenMMException("NoseHooverIntegrator: collisionFrequency must be positive");
+    if (collisionFrequency < 0)
+        throw OpenMMException("NoseHooverIntegrator: chainLength must be positive");
+    if (numMTS < 0)
+        throw OpenMMException("NoseHooverIntegrator: numMTS must be positive");
+    if (numYoshidaSuzuki != 1 && numYoshidaSuzuki != 3 && numYoshidaSuzuki != 5 && numYoshidaSuzuki != 7)
+        throw OpenMMException("NoseHooverIntegrator: numYoshidaSuzuki must be 1, 3, 5, or 7");
     hasSubsystemThermostats_ = false;
     return addSubsystemThermostat(std::vector<int>(), std::vector<std::pair<int, int>>(), temperature,
                                   collisionFrequency, temperature, collisionFrequency, chainLength, numMTS, numYoshidaSuzuki);
@@ -80,9 +90,23 @@ int NoseHooverIntegrator::addSubsystemThermostat(const std::vector<int>& thermos
                                                  double temperature, double collisionFrequency,
                                                  double relativeTemperature, double relativeCollisionFrequency,
                                                  int chainLength, int numMTS, int numYoshidaSuzuki) {
+    if (temperature < 0)
+        throw OpenMMException("NoseHooverIntegrator: temperature cannot be negative");
+    if (relativeTemperature < 0)
+        throw OpenMMException("NoseHooverIntegrator: relativeTemperature cannot be negative");
+    if (collisionFrequency <= 0)
+        throw OpenMMException("NoseHooverIntegrator: collisionFrequency must be positive");
+    if (relativeCollisionFrequency <= 0)
+        throw OpenMMException("NoseHooverIntegrator: relativeCollisionFrequency must be positive");
+    if (collisionFrequency < 0)
+        throw OpenMMException("NoseHooverIntegrator: chainLength must be positive");
+    if (numMTS < 0)
+        throw OpenMMException("NoseHooverIntegrator: numMTS must be positive");
+    if (numYoshidaSuzuki != 1 && numYoshidaSuzuki != 3 && numYoshidaSuzuki != 5 && numYoshidaSuzuki != 7)
+        throw OpenMMException("NoseHooverIntegrator: numYoshidaSuzuki must be 1, 3, 5, or 7");
     int chainID = noseHooverChains.size();
     // check if one thermostat already applies to all atoms or pairs
-    if ( (chainID > 0) && (noseHooverChains[0].getThermostatedAtoms().size()*noseHooverChains[0].getThermostatedPairs().size() == 0) ) {
+    if ( (chainID > 0) && (noseHooverChains[0].getThermostatedAtoms().size()+noseHooverChains[0].getThermostatedPairs().size() == 0) ) {
         throw OpenMMException(
             "Cannot add thermostat, since one of the thermostats already in the integrator applies to all particles. "
             "To manually add thermostats, use the constructor that takes only the "
@@ -348,4 +372,30 @@ void NoseHooverIntegrator::createCheckpoint(std::ostream& stream) const {
 
 void NoseHooverIntegrator::loadCheckpoint(std::istream& stream) {
     kernel.getAs<IntegrateNoseHooverStepKernel>().loadCheckpoint(*context, stream);
+}
+
+void NoseHooverIntegrator::serializeParameters(SerializationNode& node) const {
+    node.setIntProperty("version", 1);
+    vector<vector<double> > positions, velocities;
+    kernel.getAs<IntegrateNoseHooverStepKernel>().getChainStates(*context, positions, velocities);
+    for (int i = 0; i < positions.size(); i++) {
+        SerializationNode& chain = node.createChildNode("Chain");
+        for (int j = 0; j < positions[i].size(); j++)
+            chain.createChildNode("Bead").setDoubleProperty("position", positions[i][j]).setDoubleProperty("velocity", velocities[i][j]);
+    }
+}
+
+void NoseHooverIntegrator::deserializeParameters(const SerializationNode& node) {
+    if (node.getIntProperty("version") != 1)
+        throw OpenMMException("Unsupported version number");
+    int numChains = node.getChildren().size();
+    vector<vector<double> > positions(numChains), velocities(numChains);
+    for (int i = 0; i < numChains; i++) {
+        auto& chain = node.getChildren()[i];
+        for (auto& bead : chain.getChildren()) {
+            positions[i].push_back(bead.getDoubleProperty("position"));
+            velocities[i].push_back(bead.getDoubleProperty("velocity"));
+        }
+    }
+    kernel.getAs<IntegrateNoseHooverStepKernel>().setChainStates(*context, positions, velocities);
 }

@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2011-2013 Stanford University and the Authors.      *
+ * Portions copyright (c) 2011-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -35,7 +35,6 @@
 #include "ReferencePlatform.h"
 #include "openmm/RpmdKernels.h"
 #include "openmm/Vec3.h"
-#include "fftpack.h"
 
 namespace OpenMM {
 
@@ -46,9 +45,8 @@ namespace OpenMM {
 class ReferenceIntegrateRPMDStepKernel : public IntegrateRPMDStepKernel {
 public:
     ReferenceIntegrateRPMDStepKernel(const std::string& name, const Platform& platform) :
-            IntegrateRPMDStepKernel(name, platform), fft(NULL) {
+            IntegrateRPMDStepKernel(name, platform) {
     }
-    ~ReferenceIntegrateRPMDStepKernel();
     /**
      * Initialize the kernel.
      *
@@ -73,11 +71,11 @@ public:
      */
     double computeKineticEnergy(ContextImpl& context, const RPMDIntegrator& integrator);
     /**
-     * Get the positions of all particles in one copy of the system.
+     * Set the positions of all particles in one copy of the system.
      */
     void setPositions(int copy, const std::vector<Vec3>& positions);
     /**
-     * Get the velocities of all particles in one copy of the system.
+     * Set the velocities of all particles in one copy of the system.
      */
     void setVelocities(int copy, const std::vector<Vec3>& velocities);
     /**
@@ -93,8 +91,6 @@ private:
     std::vector<std::vector<Vec3> > contractedForces;
     std::map<int, int> groupsByCopies;
     int groupsNotContracted;
-    fftpack* fft;
-    std::map<int, fftpack*> contractionFFT;
 };
 
 } // namespace OpenMM

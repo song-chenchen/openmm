@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2019 Stanford University and the Authors.           *
+ * Portions copyright (c) 2019-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -25,6 +25,7 @@
  * -------------------------------------------------------------------------- */
 
 #include "openmm/common/ComputeContext.h"
+#include "openmm/common/ContextSelector.h"
 #include "openmm/System.h"
 #include "openmm/VirtualSite.h"
 #include "openmm/internal/ContextImpl.h"
@@ -39,8 +40,11 @@
 using namespace OpenMM;
 using namespace std;
 
+const int ComputeContext::ThreadBlockSize = 64;
+const int ComputeContext::TileSize = 32;
+
 ComputeContext::ComputeContext(const System& system) : system(system), time(0.0), stepCount(0), computeForceCount(0), stepsSinceReorder(99999),
-        atomsWereReordered(false), forcesValid(false), thread(NULL) {
+        forceNextReorder(false), atomsWereReordered(false), forcesValid(false), thread(NULL) {
     thread = new WorkThread();
 }
 
@@ -73,6 +77,19 @@ string ComputeContext::replaceStrings(const string& input, const std::map<std::s
             if (index != result.npos) {
                 if ((index == 0 || symbolChars.find(result[index-1]) == symbolChars.end()) && (index == result.size()-size || symbolChars.find(result[index+size]) == symbolChars.end())) {
                     // We have found a complete symbol, not part of a longer symbol.
+
+                    // Do not allow to replace a symbol contained in single-line comments with a multi-line content
+                    // because only the first line will be commented
+                    // (the check is used to prevent incorrect commenting during development).
+                    if (pair.second.find('\n') != pair.second.npos) {
+                        int prevIndex = index;
+                        while (prevIndex > 1 && result[prevIndex] != '\n') {
+                            if (result[prevIndex] == '/' && result[prevIndex - 1] == '/') {
+                                throw OpenMMException("Symbol " + pair.first + " is contained in a single-line comment");
+                            }
+                            prevIndex--;
+                        }
+                    }
 
                     result.replace(index, size, pair.second);
                     index += pair.second.size();
@@ -359,6 +376,7 @@ bool ComputeContext::invalidateMolecules(ComputeForceInfo* force) {
     // atoms to their original order, rebuild the list of identical molecules, and sort them
     // again.
 
+    ContextSelector selector(*this);
     vector<mm_int4> newCellOffsets(numAtoms);
     if (getUseDoublePrecision()) {
         vector<mm_double4> oldPosq(paddedNumAtoms);
@@ -384,6 +402,7 @@ bool ComputeContext::invalidateMolecules(ComputeForceInfo* force) {
         vector<mm_double4> oldVelm(paddedNumAtoms);
         vector<mm_double4> newVelm(paddedNumAtoms, mm_double4(0,0,0,0));
         getPosq().download(oldPosq);
+        getPosqCorrection().download(oldPosqCorrection);
         getVelm().download(oldVelm);
         for (int i = 0; i < numAtoms; i++) {
             int index = atomIndex[i];
@@ -420,16 +439,22 @@ bool ComputeContext::invalidateMolecules(ComputeForceInfo* force) {
     findMoleculeGroups();
     for (auto listener : reorderListeners)
         listener->execute();
+    forceNextReorder = true;
     reorderAtoms();
     return true;
 }
 
+void ComputeContext::forceReorder() {
+    forceNextReorder = true;
+}
+
 void ComputeContext::reorderAtoms() {
     atomsWereReordered = false;
-    if (numAtoms == 0 || !getNonbondedUtilities().getUseCutoff() || stepsSinceReorder < 250) {
+    if (numAtoms == 0 || !getNonbondedUtilities().getUseCutoff() || (stepsSinceReorder < 250 && !forceNextReorder)) {
         stepsSinceReorder++;
         return;
     }
+    forceNextReorder = false;
     atomsWereReordered = true;
     stepsSinceReorder = 0;
     if (getUseDoublePrecision())
@@ -506,7 +531,7 @@ void ComputeContext::reorderAtomsImpl() {
             molPos[i].y *= invNumAtoms;
             molPos[i].z *= invNumAtoms;
             if (molPos[i].x != molPos[i].x)
-                throw OpenMMException("Particle coordinate is nan");
+                throw OpenMMException("Particle coordinate is NaN.  For more information, see https://github.com/openmm/openmm/wiki/Frequently-Asked-Questions#nan");
         }
         if (getNonbondedUtilities().getUsePeriodic()) {
             // Move each molecule position into the same box.
@@ -595,6 +620,7 @@ void ComputeContext::reorderAtomsImpl() {
 
     // Update the arrays.
 
+    ContextSelector selector(*this);
     for (int i = 0; i < numAtoms; i++) {
         atomIndex[i] = originalIndex[i];
         posCellOffsets[i] = newCellOffsets[i];
@@ -620,15 +646,34 @@ void ComputeContext::addPostComputation(ForcePostComputation* computation) {
     postComputations.push_back(computation);
 }
 
+int ComputeContext::findLegalFFTDimension(int minimum) {
+    if (minimum < 1)
+        return 1;
+    while (true) {
+        // Attempt to factor the current value.
+
+        int unfactored = minimum;
+        for (int factor = 2; factor < 8; factor++) {
+            while (unfactored > 1 && unfactored%factor == 0)
+                unfactored /= factor;
+        }
+        if (unfactored == 1)
+            return minimum;
+        minimum++;
+    }
+}
+
 struct ComputeContext::WorkThread::ThreadData {
-    ThreadData(std::queue<ComputeContext::WorkTask*>& tasks, bool& waiting,  bool& finished,
+    ThreadData(std::queue<ComputeContext::WorkTask*>& tasks, bool& waiting,  bool& finished, bool& threwException, OpenMMException& stashedException,
             pthread_mutex_t& queueLock, pthread_cond_t& waitForTaskCondition, pthread_cond_t& queueEmptyCondition) :
-        tasks(tasks), waiting(waiting), finished(finished), queueLock(queueLock),
-        waitForTaskCondition(waitForTaskCondition), queueEmptyCondition(queueEmptyCondition) {
+        tasks(tasks), waiting(waiting), finished(finished), threwException(threwException), stashedException(stashedException),
+        queueLock(queueLock), waitForTaskCondition(waitForTaskCondition), queueEmptyCondition(queueEmptyCondition) {
     }
     std::queue<ComputeContext::WorkTask*>& tasks;
     bool& waiting;
     bool& finished;
+    bool& threwException;
+    OpenMMException& stashedException;
     pthread_mutex_t& queueLock;
     pthread_cond_t& waitForTaskCondition;
     pthread_cond_t& queueEmptyCondition;
@@ -643,6 +688,11 @@ static void* threadBody(void* args) {
             pthread_cond_signal(&data.queueEmptyCondition);
             pthread_cond_wait(&data.waitForTaskCondition, &data.queueLock);
         }
+        // If we keep going after having caught an exception once, next tasks will likely throw too and we don't want the initial exception overshadowed.
+        while (data.threwException && !data.tasks.empty()) {
+            delete data.tasks.front();
+            data.tasks.pop();
+        }
         ComputeContext::WorkTask* task = NULL;
         if (!data.tasks.empty()) {
             data.waiting = false;
@@ -651,7 +701,13 @@ static void* threadBody(void* args) {
         }
         pthread_mutex_unlock(&data.queueLock);
         if (task != NULL) {
-            task->execute();
+            try {
+                task->execute();
+            }
+            catch (const OpenMMException& e) {
+                data.threwException = true;
+                data.stashedException = e;
+            }
             delete task;
         }
     }
@@ -661,11 +717,11 @@ static void* threadBody(void* args) {
     return 0;
 }
 
-ComputeContext::WorkThread::WorkThread() : waiting(true), finished(false) {
+ComputeContext::WorkThread::WorkThread() : waiting(true), finished(false), threwException(false), stashedException("Default WorkThread exception. This should never be thrown.") {
     pthread_mutex_init(&queueLock, NULL);
     pthread_cond_init(&waitForTaskCondition, NULL);
     pthread_cond_init(&queueEmptyCondition, NULL);
-    ThreadData* data = new ThreadData(tasks, waiting, finished, queueLock, waitForTaskCondition, queueEmptyCondition);
+    ThreadData* data = new ThreadData(tasks, waiting, finished, threwException, stashedException, queueLock, waitForTaskCondition, queueEmptyCondition);
     pthread_create(&thread, NULL, threadBody, data);
 }
 
@@ -696,9 +752,17 @@ bool ComputeContext::WorkThread::isFinished() {
     return finished;
 }
 
+bool ComputeContext::WorkThread::isCurrentThread() {
+    return (pthread_self() == thread);
+}
+
 void ComputeContext::WorkThread::flush() {
     pthread_mutex_lock(&queueLock);
     while (!waiting)
        pthread_cond_wait(&queueEmptyCondition, &queueLock);
     pthread_mutex_unlock(&queueLock);
+    if (threwException) {
+        threwException = false;
+        throw stashedException;
+    }
 }

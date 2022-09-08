@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2014 Stanford University and the Authors.           *
+ * Portions copyright (c) 2014-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -57,12 +57,30 @@ namespace OpenMM {
 
 class OPENMM_EXPORT TabulatedFunction {
 public:
+    TabulatedFunction() : updateCount(0) {
+    }
     virtual ~TabulatedFunction() {
     }
     /**
      * @deprecated This will be removed in a future release.
      */
     virtual TabulatedFunction* Copy() const = 0;
+    /**
+     * Get the periodicity status of the tabulated function.
+     */
+    bool getPeriodic() const;
+    /**
+     * Get the value of a counter that is updated every time setFunctionParameters()
+     * is called.  This provides a fast way to detect when a function has changed.
+     */
+    int getUpdateCount() const;
+    virtual bool operator==(const TabulatedFunction& other) const = 0;
+    virtual bool operator!=(const TabulatedFunction& other) const {
+        return !(*this == other);
+    }
+protected:
+    bool periodic;
+    int updateCount;
 };
 
 /**
@@ -78,8 +96,9 @@ public:
      *                       The function is assumed to be zero for x &lt; min or x &gt; max.
      * @param min            the value of x corresponding to the first element of values
      * @param max            the value of x corresponding to the last element of values
+     * @param periodic       whether the interpolated function is periodic
      */
-    Continuous1DFunction(const std::vector<double>& values, double min, double max);
+    Continuous1DFunction(const std::vector<double>& values, double min, double max, bool periodic=false);
     /**
      * Get the parameters for the tabulated function.
      *
@@ -102,10 +121,11 @@ public:
     void setFunctionParameters(const std::vector<double>& values, double min, double max);
     /**
      * Create a deep copy of the tabulated function.
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Continuous1DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     std::vector<double> values;
     double min, max;
@@ -129,8 +149,9 @@ public:
      * @param xmax       the value of x corresponding to the last element of values
      * @param ymin       the value of y corresponding to the first element of values
      * @param ymax       the value of y corresponding to the last element of values
+     * @param periodic       whether the interpolated function is periodic
      */
-    Continuous2DFunction(int xsize, int ysize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax);
+    Continuous2DFunction(int xsize, int ysize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax, bool periodic=false);
     /**
      * Get the parameters for the tabulated function.
      *
@@ -163,10 +184,11 @@ public:
     void setFunctionParameters(int xsize, int ysize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax);
     /**
      * Create a deep copy of the tabulated function
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Continuous2DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     std::vector<double> values;
     int xsize, ysize;
@@ -196,8 +218,9 @@ public:
      * @param ymax       the value of y corresponding to the last element of values
      * @param zmin       the value of z corresponding to the first element of values
      * @param zmax       the value of z corresponding to the last element of values
+     * @param periodic       whether the interpolated function is periodic
      */
-    Continuous3DFunction(int xsize, int ysize, int zsize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax);
+    Continuous3DFunction(int xsize, int ysize, int zsize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax, bool periodic=false);
     /**
      * Get the parameters for the tabulated function.
      *
@@ -240,10 +263,11 @@ public:
     void setFunctionParameters(int xsize, int ysize, int zsize, const std::vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax);
     /**
      * Create a deep copy of the tabulated function
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Continuous3DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     std::vector<double> values;
     int xsize, ysize, zsize;
@@ -277,10 +301,11 @@ public:
     void setFunctionParameters(const std::vector<double>& values);
     /**
      * Create a deep copy of the tabulated function
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Discrete1DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     std::vector<double> values;
 };
@@ -321,10 +346,11 @@ public:
     void setFunctionParameters(int xsize, int ysize, const std::vector<double>& values);
     /**
      * Create a deep copy of the tabulated function
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Discrete2DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     int xsize, ysize;
     std::vector<double> values;
@@ -369,10 +395,11 @@ public:
     void setFunctionParameters(int xsize, int ysize, int zsize, const std::vector<double>& values);
     /**
      * Create a deep copy of the tabulated function
-     * 
+     *
      * @deprecated This will be removed in a future release.
      */
     Discrete3DFunction* Copy() const;
+    bool operator==(const TabulatedFunction& other) const;
 private:
     int xsize, ysize, zsize;
     std::vector<double> values;

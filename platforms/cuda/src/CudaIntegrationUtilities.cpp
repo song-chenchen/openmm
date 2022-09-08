@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2021 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -26,6 +26,7 @@
 
 #include "CudaIntegrationUtilities.h"
 #include "CudaContext.h"
+#include "openmm/common/ContextSelector.h"
 
 using namespace OpenMM;
 using namespace std;
@@ -40,13 +41,13 @@ using namespace std;
 
 CudaIntegrationUtilities::CudaIntegrationUtilities(CudaContext& context, const System& system) : IntegrationUtilities(context, system),
         ccmaConvergedMemory(NULL) {
-        CHECK_RESULT2(cuEventCreate(&ccmaEvent, CU_EVENT_DISABLE_TIMING), "Error creating event for CCMA");
+        CHECK_RESULT2(cuEventCreate(&ccmaEvent, context.getEventFlags()), "Error creating event for CCMA");
         CHECK_RESULT2(cuMemHostAlloc((void**) &ccmaConvergedMemory, sizeof(int), CU_MEMHOSTALLOC_DEVICEMAP), "Error allocating pinned memory");
         CHECK_RESULT2(cuMemHostGetDevicePointer(&ccmaConvergedDeviceMemory, ccmaConvergedMemory, 0), "Error getting device address for pinned memory");
 }
 
 CudaIntegrationUtilities::~CudaIntegrationUtilities() {
-    context.setAsCurrent();
+    ContextSelector selector(context);
     if (ccmaConvergedMemory != NULL) {
         cuMemFreeHost(ccmaConvergedMemory);
         cuEventDestroy(ccmaEvent);
@@ -66,6 +67,7 @@ CudaArray& CudaIntegrationUtilities::getStepSize() {
 }
 
 void CudaIntegrationUtilities::applyConstraintsImpl(bool constrainVelocities, double tol) {
+    ContextSelector selector(context);
     ComputeKernel settleKernel, shakeKernel, ccmaForceKernel;
     if (constrainVelocities) {
         settleKernel = settleVelKernel;
@@ -91,35 +93,47 @@ void CudaIntegrationUtilities::applyConstraintsImpl(bool constrainVelocities, do
             shakeKernel->setArg(1, (float) tol);
         shakeKernel->execute(shakeAtoms.getSize());
     }
-    if (ccmaAtoms.isInitialized()) {
-        ccmaForceKernel->setArg(6, ccmaConvergedDeviceMemory);
-        if (context.getUseDoublePrecision() || context.getUseMixedPrecision())
-            ccmaForceKernel->setArg(7, tol);
-        else
-            ccmaForceKernel->setArg(7, (float) tol);
-        ccmaDirectionsKernel->execute(ccmaAtoms.getSize());
-        const int checkInterval = 4;
-        ccmaConvergedMemory[0] = 0;
-        ccmaUpdateKernel->setArg(3, constrainVelocities ? context.getVelm() : posDelta);
-        for (int i = 0; i < 150; i++) {
-            ccmaForceKernel->setArg(8, i);
-            ccmaForceKernel->execute(ccmaAtoms.getSize());
-            if ((i+1)%checkInterval == 0)
-                CHECK_RESULT2(cuEventRecord(ccmaEvent, 0), "Error recording event for CCMA");
-            ccmaMultiplyKernel->setArg(5, i);
-            ccmaMultiplyKernel->execute(ccmaAtoms.getSize());
-            ccmaUpdateKernel->setArg(8, i);
-            ccmaUpdateKernel->execute(context.getNumAtoms());
-            if ((i+1)%checkInterval == 0) {
-                CHECK_RESULT2(cuEventSynchronize(ccmaEvent), "Error synchronizing on event for CCMA");
-                if (ccmaConvergedMemory[0])
-                    break;
+    if (ccmaConstraintAtoms.isInitialized()) {
+        if (ccmaConstraintAtoms.getSize() <= 1024) {
+            // Use the version of CCMA that runs in a single kernel with one workgroup.
+            ccmaFullKernel->setArg(0, (int) constrainVelocities);
+            if (context.getUseDoublePrecision() || context.getUseMixedPrecision())
+                ccmaFullKernel->setArg(14, tol);
+            else
+                ccmaFullKernel->setArg(14, (float) tol);
+            ccmaFullKernel->execute(128, 128);
+        }
+        else {
+            ccmaForceKernel->setArg(6, ccmaConvergedDeviceMemory);
+            if (context.getUseDoublePrecision() || context.getUseMixedPrecision())
+                ccmaForceKernel->setArg(7, tol);
+            else
+                ccmaForceKernel->setArg(7, (float) tol);
+            ccmaDirectionsKernel->execute(ccmaConstraintAtoms.getSize());
+            const int checkInterval = 4;
+            ccmaConvergedMemory[0] = 0;
+            ccmaUpdateKernel->setArg(4, constrainVelocities ? context.getVelm() : posDelta);
+            for (int i = 0; i < 150; i++) {
+                ccmaForceKernel->setArg(8, i);
+                ccmaForceKernel->execute(ccmaConstraintAtoms.getSize());
+                if ((i+1)%checkInterval == 0)
+                    CHECK_RESULT2(cuEventRecord(ccmaEvent, 0), "Error recording event for CCMA");
+                ccmaMultiplyKernel->setArg(5, i);
+                ccmaMultiplyKernel->execute(ccmaConstraintAtoms.getSize());
+                ccmaUpdateKernel->setArg(9, i);
+                ccmaUpdateKernel->execute(context.getNumAtoms());
+                if ((i+1)%checkInterval == 0) {
+                    CHECK_RESULT2(cuEventSynchronize(ccmaEvent), "Error synchronizing on event for CCMA");
+                    if (ccmaConvergedMemory[0])
+                        break;
+                }
             }
         }
     }
 }
 
 void CudaIntegrationUtilities::distributeForcesFromVirtualSites() {
+    ContextSelector selector(context);
     if (numVsites > 0) {
         vsiteForceKernel->setArg(2, context.getLongForceBuffer());
         vsiteForceKernel->execute(numVsites);

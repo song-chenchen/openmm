@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2010-2020 Stanford University and the Authors.      *
+ * Portions copyright (c) 2010-2021 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -37,7 +37,8 @@
 using namespace OpenMM;
 using namespace std;
 
-OpenCLSort::OpenCLSort(OpenCLContext& context, SortTrait* trait, unsigned int length) : context(context), trait(trait), dataLength(length) {
+OpenCLSort::OpenCLSort(OpenCLContext& context, SortTrait* trait, unsigned int length, bool uniform) :
+        context(context), trait(trait), dataLength(length), uniform(uniform) {
     // Create kernels.
 
     std::map<std::string, std::string> replacements;
@@ -47,11 +48,13 @@ OpenCLSort::OpenCLSort(OpenCLContext& context, SortTrait* trait, unsigned int le
     replacements["MIN_KEY"] = trait->getMinKey();
     replacements["MAX_KEY"] = trait->getMaxKey();
     replacements["MAX_VALUE"] = trait->getMaxValue();
+    replacements["UNIFORM"] = (uniform ? "1" : "0");
     cl::Program program = context.createProgram(context.replaceStrings(OpenCLKernelSources::sort, replacements));
     shortListKernel = cl::Kernel(program, "sortShortList");
     shortList2Kernel = cl::Kernel(program, "sortShortList2");
     computeRangeKernel = cl::Kernel(program, "computeRange");
     assignElementsKernel = cl::Kernel(program, "assignElementsToBuckets");
+    assignElementsKernel = cl::Kernel(program, uniform ? "assignElementsToBuckets" : "assignElementsToBuckets2");
     computeBucketPositionsKernel = cl::Kernel(program, "computeBucketPositions");
     copyToBucketsKernel = cl::Kernel(program, "copyDataToBuckets");
     sortBucketsKernel = cl::Kernel(program, "sortBuckets");
@@ -63,19 +66,17 @@ OpenCLSort::OpenCLSort(OpenCLContext& context, SortTrait* trait, unsigned int le
     unsigned int maxRangeSize = std::min(maxGroupSize, (unsigned int) computeRangeKernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(context.getDevice()));
     unsigned int maxPositionsSize = std::min(maxGroupSize, (unsigned int) computeBucketPositionsKernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(context.getDevice()));
     int maxLocalBuffer = (maxSharedMem/trait->getDataSize())/2;
-    unsigned int maxShortList = min(8192, max(maxLocalBuffer, (int) OpenCLContext::ThreadBlockSize*context.getNumThreadBlocks()));
-    // The following line checks CL_KERNEL_WORK_GROUP_SIZE to make sure we don't create too large a workgroup.
-    // Unfortunately, AMD's OpenCL returns an inappropriately small value for it that is much shorter than the actual
-    // maximum, so including the check hurts performance.  For the moment I'm just leaving it commented out.
-    // If the workgroup size turns out to be too large, we catch the exception and switch back to the standard
-    // sorting kernels.
-    //maxShortList = min(maxShortList, shortListKernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(context.getDevice()));
-    isShortList = (length <= maxShortList);
+    int maxShortList = max(maxLocalBuffer, (int) OpenCLContext::ThreadBlockSize*context.getNumThreadBlocks());
     string vendor = context.getDevice().getInfo<CL_DEVICE_VENDOR>();
-    if (vendor.size() >= 6 && vendor.substr(0, 6) == "NVIDIA")
+    if (vendor.size() >= 6 && vendor.substr(0, 6) == "NVIDIA") {
+        maxShortList = min(3000, maxShortList);
         useShortList2 = (dataLength <= OpenCLContext::ThreadBlockSize*context.getNumThreadBlocks());
-    else
+    }
+    else {
+        maxShortList = min(1024, maxShortList);
         useShortList2 = false;
+    }
+    isShortList = (length <= maxShortList);
     for (rangeKernelSize = 1; rangeKernelSize*2 <= maxRangeSize; rangeKernelSize *= 2)
         ;
     positionsKernelSize = std::min(rangeKernelSize, maxPositionsSize);

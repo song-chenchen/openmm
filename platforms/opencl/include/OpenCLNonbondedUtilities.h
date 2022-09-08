@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -31,7 +31,6 @@
 #include "OpenCLArray.h"
 #include "OpenCLExpressionUtilities.h"
 #include "openmm/common/NonbondedUtilities.h"
-#include <cl.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -126,7 +125,7 @@ public:
      * Get the number of force buffers required for nonbonded forces.
      */
     int getNumForceBuffers() const {
-        return numForceBuffers;
+        return 1;
     }
     /**
      * Get the number of energy buffers required for nonbonded forces.
@@ -297,6 +296,10 @@ public:
      * @param groups    the set of force groups
      */
     void createKernelsForGroups(int groups);
+    /**
+     * Set the source code for the main kernel.  It only needs to be changed in very unusual circumstances.
+     */
+    void setKernelSource(const std::string& source);
 private:
     class KernelSet;
     class BlockSortTrait;
@@ -319,7 +322,7 @@ private:
     OpenCLSort* blockSorter;
     cl::Event downloadCountEvent;
     cl::Buffer* pinnedCountBuffer;
-    int* pinnedCountMemory;
+    unsigned int* pinnedCountMemory;
     std::vector<std::vector<int> > atomExclusions;
     std::vector<ParameterInfo> parameters;
     std::vector<ParameterInfo> arguments;
@@ -328,8 +331,11 @@ private:
     std::map<int, std::string> groupKernelSource;
     double lastCutoff;
     bool useCutoff, usePeriodic, deviceIsCpu, anyExclusions, usePadding, forceRebuildNeighborList;
-    int numForceBuffers, startTileIndex, numTiles, startBlockIndex, numBlocks, maxExclusions, numForceThreadBlocks;
+    int startTileIndex, startBlockIndex, numBlocks, maxExclusions, numForceThreadBlocks;
     int forceThreadBlockSize, interactingBlocksThreadBlockSize, groupFlags;
+    unsigned int tilesAfterReorder;
+    long long numTiles;
+    std::string kernelSource;
 };
 
 /**
@@ -362,9 +368,10 @@ public:
      * @param numComponents  the number of components in the parameter
      * @param size           the size of the parameter in bytes
      * @param memory         the memory containing the parameter values
+     * @param constant       whether the memory should be marked as constant
      */
-    ParameterInfo(const std::string& name, const std::string& componentType, int numComponents, int size, cl::Memory& memory) :
-            name(name), componentType(componentType), numComponents(numComponents), size(size), memory(&memory) {
+    ParameterInfo(const std::string& name, const std::string& componentType, int numComponents, int size, cl::Memory& memory, bool constant=true) :
+            name(name), componentType(componentType), numComponents(numComponents), size(size), memory(&memory), constant(constant) {
         if (numComponents == 1)
             type = componentType;
         else {
@@ -391,12 +398,16 @@ public:
     cl::Memory& getMemory() const {
         return *memory;
     }
+    bool isConstant() const {
+        return constant;
+    }
 private:
     std::string name;
     std::string componentType;
     std::string type;
     int size, numComponents;
     cl::Memory* memory;
+    bool constant;
 };
 
 } // namespace OpenMM

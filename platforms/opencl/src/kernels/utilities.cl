@@ -67,9 +67,10 @@ __kernel void clearSixBuffers(__global int* restrict buffer1, int size1, __globa
 
 /**
  * Sum a collection of buffers into the first one.
+ * Also, write the result into a 64-bit fixed point buffer (overwriting its contents).
  */
 
-__kernel void reduceReal4Buffer(__global real4* restrict buffer, int bufferSize, int numBuffers) {
+__kernel void reduceReal4Buffer(__global real4* restrict buffer, __global long* restrict longBuffer, int bufferSize, int numBuffers) {
     int index = get_global_id(0);
     int totalSize = bufferSize*numBuffers;
     while (index < bufferSize) {
@@ -77,6 +78,9 @@ __kernel void reduceReal4Buffer(__global real4* restrict buffer, int bufferSize,
         for (int i = index+bufferSize; i < totalSize; i += bufferSize)
             sum += buffer[i];
         buffer[index] = sum;
+        longBuffer[index] = (long) (sum.x*0x100000000);
+        longBuffer[index+bufferSize] = (long) (sum.y*0x100000000);
+        longBuffer[index+2*bufferSize] = (long) (sum.z*0x100000000);
         index += get_global_size(0);
     }
 }
@@ -88,17 +92,13 @@ __kernel void reduceForces(__global long* restrict longBuffer, __global real4* r
     int totalSize = bufferSize*numBuffers;
     real scale = 1/(real) 0x100000000;
     for (int index = get_global_id(0); index < bufferSize; index += get_global_size(0)) {
-#ifdef SUPPORTS_64_BIT_ATOMICS
         real4 sum = (real4) (scale*longBuffer[index], scale*longBuffer[index+bufferSize], scale*longBuffer[index+2*bufferSize], 0);
-#else
-        real4 sum = (real4) 0;
-#endif
         for (int i = index; i < totalSize; i += bufferSize)
             sum += buffer[i];
         buffer[index] = sum;
-        longBuffer[index] = (long) (sum.x*0x100000000);
-        longBuffer[index+bufferSize] = (long) (sum.y*0x100000000);
-        longBuffer[index+2*bufferSize] = (long) (sum.z*0x100000000);
+        longBuffer[index] = realToFixedPoint(sum.x);
+        longBuffer[index+bufferSize] = realToFixedPoint(sum.y);
+        longBuffer[index+2*bufferSize] = realToFixedPoint(sum.z);
     }
 }
 

@@ -1,5 +1,5 @@
 
-/* Portions copyright (c) 2006-2018 Stanford University and Simbios.
+/* Portions copyright (c) 2006-2020 Stanford University and Simbios.
  * Contributors: Pande Group
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -44,10 +44,12 @@ class CpuNonbondedForce {
       /**---------------------------------------------------------------------------------------
       
          Constructor
+
+         @param neighbors           the neighbor list to use
       
          --------------------------------------------------------------------------------------- */
 
-       CpuNonbondedForce();
+       CpuNonbondedForce(const CpuNeighborList& neighbors);
        
         /**
          * Virtual destructor.
@@ -60,12 +62,11 @@ class CpuNonbondedForce {
          Set the force to use a cutoff.
       
          @param distance            the cutoff distance
-         @param neighbors           the neighbor list to use
          @param solventDielectric   the dielectric constant of the bulk solvent
       
          --------------------------------------------------------------------------------------- */
       
-      void setUseCutoff(float distance, const CpuNeighborList& neighbors, float solventDielectric);
+      void setUseCutoff(float distance, float solventDielectric);
 
       /**---------------------------------------------------------------------------------------
       
@@ -126,6 +127,14 @@ class CpuNonbondedForce {
       void setUseLJPME(float alpha, int meshSize[3]);
 
       /**---------------------------------------------------------------------------------------
+
+         Set whether exceptions use periodic boundary conditions.
+
+         --------------------------------------------------------------------------------------- */
+
+      void setPeriodicExceptions(bool periodic);
+
+      /**---------------------------------------------------------------------------------------
       
          Calculate Ewald ixn
       
@@ -172,7 +181,7 @@ class CpuNonbondedForce {
 protected:
         bool cutoff;
         bool useSwitch;
-        bool periodic;
+        bool periodic, periodicExceptions;
         bool triclinic;
         bool ewald;
         bool ljpme, pme;
@@ -201,23 +210,10 @@ protected:
         bool includeEnergy;
         float inverseRcut6;
         float inverseRcut6Expterm;
-        std::atomic<int> atomicCounter;
+        std::atomic<int> atomicCounter, atomicCounter2;
 
         static const float TWO_OVER_SQRT_PI;
         static const int NUM_TABLE_POINTS;
-
-      /**---------------------------------------------------------------------------------------
-      
-         Calculate LJ Coulomb pair ixn between two atoms
-      
-         @param atom1            the index of the first atom
-         @param atom2            the index of the second atom
-         @param forces           force array (forces added)
-         @param totalEnergy      total energy
-            
-         --------------------------------------------------------------------------------------- */
-          
-      void calculateOneIxn(int atom1, int atom2, float* forces, double* totalEnergy, const fvec4& boxSize, const fvec4& invBoxSize);
             
       /**---------------------------------------------------------------------------------------
       

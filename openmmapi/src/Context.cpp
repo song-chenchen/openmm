@@ -87,7 +87,7 @@ Platform& Context::getPlatform() {
 }
 
 State Context::getState(int types, bool enforcePeriodicBox, int groups) const {
-    State::StateBuilder builder(impl->getTime());
+    State::StateBuilder builder(impl->getTime(), impl->getStepCount());
     Vec3 periodicBoxSize[3];
     impl->getPeriodicBoxVectors(periodicBoxSize[0], periodicBoxSize[1], periodicBoxSize[2]);
     builder.setPeriodicBoxVectors(periodicBoxSize[0], periodicBoxSize[1], periodicBoxSize[2]);
@@ -147,11 +147,15 @@ State Context::getState(int types, bool enforcePeriodicBox, int groups) const {
         impl->getVelocities(velocities);
         builder.setVelocities(velocities);
     }
+    if (types&State::IntegratorParameters) {
+        getIntegrator().serializeParameters(builder.updateIntegratorParameters());
+    }
     return builder.getState();
 }
 
 void Context::setState(const State& state) {
     setTime(state.getTime());
+    setStepCount(state.getStepCount());
     Vec3 a, b, c;
     state.getPeriodicBoxVectors(a, b, c);
     setPeriodicBoxVectors(a, b, c);
@@ -162,10 +166,24 @@ void Context::setState(const State& state) {
     if ((state.getDataTypes()&State::Parameters) != 0)
         for (auto& param : state.getParameters())
             setParameter(param.first, param.second);
+    if ((state.getDataTypes()&State::IntegratorParameters) != 0)
+        getIntegrator().deserializeParameters(state.getIntegratorParameters());
+}
+
+double Context::getTime() const {
+    return impl->getTime();
 }
 
 void Context::setTime(double time) {
     impl->setTime(time);
+}
+
+long long Context::getStepCount() const {
+    return impl->getStepCount();
+}
+
+void Context::setStepCount(long long count) {
+    impl->setStepCount(count);
 }
 
 void Context::setPositions(const vector<Vec3>& positions) {

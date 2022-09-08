@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2014 Stanford University and the Authors.           *
+ * Portions copyright (c) 2014-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -35,14 +35,17 @@
 using namespace OpenMM;
 using namespace std;
 
-Continuous1DFunction::Continuous1DFunction(const vector<double>& values, double min, double max) {
-    if (max <= min)
-        throw OpenMMException("Continuous1DFunction: max <= min for a tabulated function.");
-    if (values.size() < 2)
-        throw OpenMMException("Continuous1DFunction: a tabulated function must have at least two points");
-    this->values = values;
-    this->min = min;
-    this->max = max;
+bool TabulatedFunction::getPeriodic() const {
+    return periodic;
+}
+
+int TabulatedFunction::getUpdateCount() const {
+    return updateCount;
+}
+
+Continuous1DFunction::Continuous1DFunction(const vector<double>& values, double min, double max, bool periodic) {
+    this->periodic = periodic;
+    setFunctionParameters(values, min, max);
 }
 
 void Continuous1DFunction::getFunctionParameters(vector<double>& values, double& min, double& max) const {
@@ -54,11 +57,20 @@ void Continuous1DFunction::getFunctionParameters(vector<double>& values, double&
 void Continuous1DFunction::setFunctionParameters(const vector<double>& values, double min, double max) {
     if (max <= min)
         throw OpenMMException("Continuous1DFunction: max <= min for a tabulated function.");
-    if (values.size() < 2)
-        throw OpenMMException("Continuous1DFunction: a tabulated function must have at least two points");
+    int n = values.size();
+    if (periodic) {
+        if (n < 3)
+            throw OpenMMException("Continuous1DFunction: a periodic tabulated function must have at least three points");
+       // Note: value-matching at boundary is eventually checked at spline creation.
+       // if (values[0] != values[n-1])
+       //     throw OpenMMException("Continuous1DFunction: with periodic=true, the first and last points must have the same value");
+    }
+    else if (n < 2)
+        throw OpenMMException("Continuous1DFunction: a non-periodic tabulated function must have at least two points");
     this->values = values;
     this->min = min;
     this->max = max;
+    updateCount++;
 }
 
 Continuous1DFunction* Continuous1DFunction::Copy() const {
@@ -68,22 +80,18 @@ Continuous1DFunction* Continuous1DFunction::Copy() const {
     return new Continuous1DFunction(new_vec, min, max);
 }
 
-Continuous2DFunction::Continuous2DFunction(int xsize, int ysize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax) {
-    if (xsize < 2 || ysize < 2)
-        throw OpenMMException("Continuous2DFunction: must have at least two points along each axis");
-    if (values.size() != xsize*ysize)
-        throw OpenMMException("Continuous2DFunction: incorrect number of values");
-    if (xmax <= xmin)
-        throw OpenMMException("Continuous2DFunction: xmax <= xmin for a tabulated function.");
-    if (ymax <= ymin)
-        throw OpenMMException("Continuous2DFunction: ymax <= ymin for a tabulated function.");
-    this->values = values;
-    this->xsize = xsize;
-    this->ysize = ysize;
-    this->xmin = xmin;
-    this->xmax = xmax;
-    this->ymin = ymin;
-    this->ymax = ymax;
+bool Continuous1DFunction::operator==(const TabulatedFunction& other) const {
+    const Continuous1DFunction* fn = dynamic_cast<const Continuous1DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    if (fn->min != min || fn->max != max)
+        return false;
+    return (fn->values == values);
+}
+
+Continuous2DFunction::Continuous2DFunction(int xsize, int ysize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax, bool periodic) {
+    this->periodic = periodic;
+    setFunctionParameters(xsize, ysize, values, xmin, xmax, ymin, ymax);
 }
 
 void Continuous2DFunction::getFunctionParameters(int& xsize, int& ysize, vector<double>& values, double& xmin, double& xmax, double& ymin, double& ymax) const {
@@ -97,7 +105,12 @@ void Continuous2DFunction::getFunctionParameters(int& xsize, int& ysize, vector<
 }
 
 void Continuous2DFunction::setFunctionParameters(int xsize, int ysize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax) {
-    if (xsize < 2 || ysize < 2)
+    if (periodic) {
+        if (xsize < 3 || ysize < 3)
+           throw OpenMMException("Continuous2DFunction: must have at least three points along each axis if periodic");
+        // Note: value-matching at boundary is eventually checked at 2D-spline creation.
+    }
+    else if (xsize < 2 || ysize < 2)
         throw OpenMMException("Continuous2DFunction: must have at least two points along each axis");
     if (values.size() != xsize*ysize)
         throw OpenMMException("Continuous2DFunction: incorrect number of values");
@@ -112,6 +125,7 @@ void Continuous2DFunction::setFunctionParameters(int xsize, int ysize, const vec
     this->xmax = xmax;
     this->ymin = ymin;
     this->ymax = ymax;
+    updateCount++;
 }
 
 Continuous2DFunction* Continuous2DFunction::Copy() const {
@@ -121,27 +135,22 @@ Continuous2DFunction* Continuous2DFunction::Copy() const {
     return new Continuous2DFunction(xsize, ysize, new_vec, xmin, xmax, ymin, ymax);
 }
 
-Continuous3DFunction::Continuous3DFunction(int xsize, int ysize, int zsize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax) {
-    if (xsize < 2 || ysize < 2 || zsize < 2)
-        throw OpenMMException("Continuous3DFunction: must have at least two points along each axis");
-    if (values.size() != xsize*ysize*zsize)
-        throw OpenMMException("Continuous3DFunction: incorrect number of values");
-    if (xmax <= xmin)
-        throw OpenMMException("Continuous3DFunction: xmax <= xmin for a tabulated function.");
-    if (ymax <= ymin)
-        throw OpenMMException("Continuous3DFunction: ymax <= ymin for a tabulated function.");
-    if (zmax <= zmin)
-        throw OpenMMException("Continuous3DFunction: zmax <= zmin for a tabulated function.");
-    this->values = values;
-    this->xsize = xsize;
-    this->ysize = ysize;
-    this->zsize = zsize;
-    this->xmin = xmin;
-    this->xmax = xmax;
-    this->ymin = ymin;
-    this->ymax = ymax;
-    this->zmin = zmin;
-    this->zmax = zmax;
+bool Continuous2DFunction::operator==(const TabulatedFunction& other) const {
+    const Continuous2DFunction* fn = dynamic_cast<const Continuous2DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    if (fn->xsize != xsize || fn->ysize != ysize)
+        return false;
+    if (fn->xmin != xmin || fn->xmax != xmax)
+        return false;
+    if (fn->ymin != ymin || fn->ymax != ymax)
+        return false;
+    return (fn->values == values);
+}
+
+Continuous3DFunction::Continuous3DFunction(int xsize, int ysize, int zsize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax, bool periodic) {
+    this->periodic = periodic;
+    setFunctionParameters(xsize, ysize, zsize, values, xmin, xmax, ymin, ymax, zmin, zmax);
 }
 
 void Continuous3DFunction::getFunctionParameters(int& xsize, int& ysize, int& zsize, vector<double>& values, double& xmin, double& xmax, double& ymin, double& ymax, double& zmin, double& zmax) const {
@@ -158,7 +167,12 @@ void Continuous3DFunction::getFunctionParameters(int& xsize, int& ysize, int& zs
 }
 
 void Continuous3DFunction::setFunctionParameters(int xsize, int ysize, int zsize, const vector<double>& values, double xmin, double xmax, double ymin, double ymax, double zmin, double zmax) {
-    if (xsize < 2 || ysize < 2 || zsize < 2)
+    if (periodic) {
+       if (xsize < 3 || ysize < 3 || zsize < 3)
+           throw OpenMMException("Continuous3DFunction: must have at least three points along each axis if periodic");
+       // Note: value-matching at boundary is eventually checked at 3D-spline creation.
+    }
+    else if (xsize < 2 || ysize < 2 || zsize < 2)
         throw OpenMMException("Continuous3DFunction: must have at least two points along each axis");
     if (values.size() != xsize*ysize*zsize)
         throw OpenMMException("Continuous3DFunction: incorrect number of values");
@@ -178,6 +192,7 @@ void Continuous3DFunction::setFunctionParameters(int xsize, int ysize, int zsize
     this->ymax = ymax;
     this->zmin = zmin;
     this->zmax = zmax;
+    updateCount++;
 }
 
 Continuous3DFunction* Continuous3DFunction::Copy() const {
@@ -187,6 +202,20 @@ Continuous3DFunction* Continuous3DFunction::Copy() const {
     return new Continuous3DFunction(xsize, ysize, zsize, new_vec, xmin, xmax, ymin, ymax, zmin, zmax);
 }
 
+bool Continuous3DFunction::operator==(const TabulatedFunction& other) const {
+    const Continuous3DFunction* fn = dynamic_cast<const Continuous3DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    if (fn->xsize != xsize || fn->ysize != ysize || fn->zsize != zsize)
+        return false;
+    if (fn->xmin != xmin || fn->xmax != xmax)
+        return false;
+    if (fn->ymin != ymin || fn->ymax != ymax)
+        return false;
+    if (fn->zmin != zmin || fn->zmax != zmax)
+        return false;
+    return (fn->values == values);
+}
 
 Discrete1DFunction::Discrete1DFunction(const vector<double>& values) {
     this->values = values;
@@ -198,6 +227,7 @@ void Discrete1DFunction::getFunctionParameters(vector<double>& values) const {
 
 void Discrete1DFunction::setFunctionParameters(const vector<double>& values) {
     this->values = values;
+    updateCount++;
 }
 
 Discrete1DFunction* Discrete1DFunction::Copy() const {
@@ -205,6 +235,13 @@ Discrete1DFunction* Discrete1DFunction::Copy() const {
     for (size_t i = 0; i < values.size(); i++)
         new_vec[i] = values[i];
     return new Discrete1DFunction(new_vec);
+}
+
+bool Discrete1DFunction::operator==(const TabulatedFunction& other) const {
+    const Discrete1DFunction* fn = dynamic_cast<const Discrete1DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    return (fn->values == values);
 }
 
 Discrete2DFunction::Discrete2DFunction(int xsize, int ysize, const vector<double>& values) {
@@ -227,6 +264,7 @@ void Discrete2DFunction::setFunctionParameters(int xsize, int ysize, const vecto
     this->xsize = xsize;
     this->ysize = ysize;
     this->values = values;
+    updateCount++;
 }
 
 Discrete2DFunction* Discrete2DFunction::Copy() const {
@@ -234,6 +272,15 @@ Discrete2DFunction* Discrete2DFunction::Copy() const {
     for (size_t i = 0; i < values.size(); i++)
         new_vec[i] = values[i];
     return new Discrete2DFunction(xsize, ysize, new_vec);
+}
+
+bool Discrete2DFunction::operator==(const TabulatedFunction& other) const {
+    const Discrete2DFunction* fn = dynamic_cast<const Discrete2DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    if (fn->xsize != xsize || fn->ysize != ysize)
+        return false;
+    return (fn->values == values);
 }
 
 Discrete3DFunction::Discrete3DFunction(int xsize, int ysize, int zsize, const vector<double>& values) {
@@ -259,6 +306,7 @@ void Discrete3DFunction::setFunctionParameters(int xsize, int ysize, int zsize, 
     this->ysize = ysize;
     this->zsize = zsize;
     this->values = values;
+    updateCount++;
 }
 
 Discrete3DFunction* Discrete3DFunction::Copy() const {
@@ -266,4 +314,13 @@ Discrete3DFunction* Discrete3DFunction::Copy() const {
     for (size_t i = 0; i < values.size(); i++)
         new_vec[i] = values[i];
     return new Discrete3DFunction(xsize, ysize, zsize, new_vec);
+}
+
+bool Discrete3DFunction::operator==(const TabulatedFunction& other) const {
+    const Discrete3DFunction* fn = dynamic_cast<const Discrete3DFunction*>(&other);
+    if (fn == NULL)
+        return false;
+    if (fn->xsize != xsize || fn->ysize != ysize || fn->zsize != zsize)
+        return false;
+    return (fn->values == values);
 }

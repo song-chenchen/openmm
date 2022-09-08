@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -130,13 +130,20 @@ public:
      * @param timeShift   the amount by which to shift the velocities in time
      */
     double computeKineticEnergy(double timeShift);
+    /**
+     * Compute the current velocities, shifting them in time to account for a leapfrog integrator.
+     * 
+     * @param timeShift   the amount by which to shift the velocities in time
+     * @param velocities  the shifted velocities are returned in this
+     */
+    void computeShiftedVelocities(double timeShift, std::vector<Vec3>& velocities);
 protected:
     virtual void applyConstraintsImpl(bool constrainVelocities, double tol) = 0;
     ComputeContext& context;
     ComputeKernel settlePosKernel, settleVelKernel;
     ComputeKernel shakePosKernel, shakeVelKernel;
     ComputeKernel ccmaDirectionsKernel, ccmaPosForceKernel, ccmaVelForceKernel;
-    ComputeKernel ccmaMultiplyKernel, ccmaUpdateKernel;
+    ComputeKernel ccmaMultiplyKernel, ccmaUpdateKernel, ccmaFullKernel;
     ComputeKernel vsitePositionKernel, vsiteForceKernel, vsiteSaveForcesKernel;
     ComputeKernel randomKernel, timeShiftKernel;
     ComputeArray posDelta;
@@ -148,6 +155,7 @@ protected:
     ComputeArray randomSeed;
     ComputeArray stepSize;
     ComputeArray ccmaAtoms;
+    ComputeArray ccmaConstraintAtoms;
     ComputeArray ccmaDistance;
     ComputeArray ccmaReducedMass;
     ComputeArray ccmaAtomConstraints;

@@ -140,7 +140,7 @@ void testConstraints() {
 void testConstrainedClusters() {
     const int numParticles = 7;
     System system;
-    NoseHooverIntegrator integrator(0.0005);
+    NoseHooverIntegrator integrator(0.0004);
     integrator.setConstraintTolerance(1e-5);
     NonbondedForce* forceField = new NonbondedForce();
     for (int i = 0; i < numParticles; ++i) {
@@ -351,7 +351,7 @@ int makeDimerBox(System& system, std::vector<Vec3>& positions, bool constrain=tr
         int particle2 = system.addParticle(mass);
         forceField->addParticle(0.0, 0.1, 1.0);
         forceField->addParticle(0.0, 0.1, 1.0);
-        forceField->addException(particle1, particle2, 0, 0, 0);
+        forceField->addException(particle1, particle2, 0, 1, 0);
         bondForce->addBond(particle1, particle2, bondLength, bondForceConstant);
         numDOF += 6;
         if (constrain) {
@@ -499,6 +499,57 @@ void testCheckpoints() {
     ASSERT_EQUAL_VEC(state1.getVelocities()[1], state2.getVelocities()[1], 1e-6); 
 }
 
+void testSaveParameters() {
+    // Create a system with Drude-like particles to be thermostated as a pair, as well as another
+    // particle to be thermostated independently, to test all integrator features.
+    double timeStep = 0.001;
+    NoseHooverIntegrator integrator(timeStep), newIntegrator(timeStep);
+    System system;
+    double mass = 1;
+    system.addParticle(8*mass);
+    system.addParticle(mass);
+    system.addParticle(5*mass);
+    HarmonicBondForce* force = new HarmonicBondForce();
+    force->addBond(0, 1, 0.1, 50.0);
+    force->addBond(0, 2, 0.1, 50.0);
+    system.addForce(force);
+    double kineticEnergy = 1e6;
+    double temperature=300, collisionFrequency=1, chainLength=3, numMTS=3, numYS=3;
+    chainLength = 10;
+    integrator.addSubsystemThermostat(std::vector<int>{2}, std::vector<std::pair<int,int>>{{0,1}},  temperature, collisionFrequency, temperature, collisionFrequency,
+                                      chainLength, numMTS, numYS);
+    newIntegrator.addSubsystemThermostat(std::vector<int>{2}, std::vector<std::pair<int,int>>{{0,1}},  temperature, collisionFrequency, temperature, collisionFrequency,
+                                      chainLength, numMTS, numYS);
+    Context context(system, integrator, platform);
+    Context newContext(system, newIntegrator, platform);
+    std::vector<Vec3> positions(3);
+    std::vector<Vec3> velocities(3);
+    positions[1] = {0.1, 0.0, 0.0};
+    velocities[1] = {0.1,0.2,-0.2};
+    positions[2] = {-0.1, 0.001, 0.001};
+    velocities[2] = {-0.1,0.2,-0.2};
+    context.setPositions(positions);
+    context.setVelocities(velocities);
+
+    // Run a short simulation and save a state..
+    integrator.step(500);
+    State savedState = context.getState(State::Positions | State::Velocities | State::IntegratorParameters); 
+
+    // Now continue the simulation
+    integrator.step(5);
+
+    // And try the same, starting from the state
+    newContext.setState(savedState);
+    newIntegrator.step(5);
+
+    State state1 = context.getState(State::Positions | State::Velocities);
+    State state2 = newContext.getState(State::Positions | State::Velocities);
+    ASSERT_EQUAL_VEC(state1.getPositions()[0], state2.getPositions()[0], 1e-6); 
+    ASSERT_EQUAL_VEC(state1.getPositions()[1], state2.getPositions()[1], 1e-6); 
+    ASSERT_EQUAL_VEC(state1.getVelocities()[0], state2.getVelocities()[0], 1e-6); 
+    ASSERT_EQUAL_VEC(state1.getVelocities()[1], state2.getVelocities()[1], 1e-6); 
+}
+
 void testAPIChangeNumParticles() {
     bool constrain = true;
     int numMolecules = 20;
@@ -553,6 +604,7 @@ int main(int argc, char* argv[]) {
         constrain = false; testDimerBox(constrain);
         constrain = true; testDimerBox(constrain);
         testCheckpoints();
+        testSaveParameters();
         testForceGroups();
         runPlatformTests();
     }

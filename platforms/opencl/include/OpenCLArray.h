@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -27,12 +27,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.      *
  * -------------------------------------------------------------------------- */
 
-#define __CL_ENABLE_EXCEPTIONS
-#define CL_USE_DEPRECATED_OPENCL_1_1_APIS
+#define CL_HPP_ENABLE_EXCEPTIONS
+#define CL_HPP_TARGET_OPENCL_VERSION 120
+#define CL_HPP_MINIMUM_OPENCL_VERSION 120
 #include "openmm/OpenMMException.h"
 #include "openmm/common/windowsExportCommon.h"
 #include "openmm/common/ArrayInterface.h"
-#include <cl.hpp>
+#include "opencl.hpp"
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -58,7 +59,7 @@ public:
      * @param flags             the set of flags to specify when creating the OpenCL Buffer
      */
     template <class T>
-    static OpenCLArray* create(OpenCLContext& context, int size, const std::string& name, cl_int flags = CL_MEM_READ_WRITE) {
+    static OpenCLArray* create(OpenCLContext& context, size_t size, const std::string& name, cl_int flags = CL_MEM_READ_WRITE) {
         return new OpenCLArray(context, size, sizeof(T), name, flags);
     }
     /**
@@ -71,7 +72,7 @@ public:
      * @param name              the name of the array
      */
     template <class T>
-    static OpenCLArray* create(OpenCLContext& context, cl::Buffer* buffer, int size, const std::string& name) {
+    static OpenCLArray* create(OpenCLContext& context, cl::Buffer* buffer, size_t size, const std::string& name) {
         return new OpenCLArray(context, buffer, size, sizeof(T), name);
     }
     /**
@@ -88,7 +89,7 @@ public:
      * @param name              the name of the array
      * @param flags             the set of flags to specify when creating the OpenCL Buffer
      */
-    OpenCLArray(OpenCLContext& context, int size, int elementSize, const std::string& name, cl_int flags = CL_MEM_READ_WRITE);
+    OpenCLArray(OpenCLContext& context, size_t size, int elementSize, const std::string& name, cl_int flags = CL_MEM_READ_WRITE);
     /**
      * Create an OpenCLArray object that uses a preexisting Buffer.
      *
@@ -98,7 +99,7 @@ public:
      * @param elementSize       the size of each element in bytes
      * @param name              the name of the array
      */
-    OpenCLArray(OpenCLContext& context, cl::Buffer* buffer, int size, int elementSize, const std::string& name);
+    OpenCLArray(OpenCLContext& context, cl::Buffer* buffer, size_t size, int elementSize, const std::string& name);
     ~OpenCLArray();
     /**
      * Initialize this array.
@@ -108,7 +109,7 @@ public:
      * @param elementSize       the size of each element in bytes
      * @param name              the name of the array
      */
-    void initialize(ComputeContext& context, int size, int elementSize, const std::string& name);
+    void initialize(ComputeContext& context, size_t size, int elementSize, const std::string& name);
     /**
      * Initialize this object.
      *
@@ -118,7 +119,7 @@ public:
      * @param name              the name of the array
      * @param flags             the set of flags to specify when creating the OpenCL Buffer
      */
-    void initialize(OpenCLContext& context, int size, int elementSize, const std::string& name, cl_int flags);
+    void initialize(OpenCLContext& context, size_t size, int elementSize, const std::string& name, cl_int flags);
     /**
      * Initialize this object to use a preexisting Buffer.
      *
@@ -128,7 +129,7 @@ public:
      * @param elementSize       the size of each element in bytes
      * @param name              the name of the array
      */
-    void initialize(OpenCLContext& context, cl::Buffer* buffer, int size, int elementSize, const std::string& name);
+    void initialize(OpenCLContext& context, cl::Buffer* buffer, size_t size, int elementSize, const std::string& name);
     /**
      * Initialize this object.  The template argument is the data type of each array element.
      *
@@ -138,7 +139,7 @@ public:
      * @param flags             the set of flags to specify when creating the OpenCL Buffer
      */
     template <class T>
-    void initialize(OpenCLContext& context, int size, const std::string& name, cl_int flags = CL_MEM_READ_WRITE) {
+    void initialize(OpenCLContext& context, size_t size, const std::string& name, cl_int flags = CL_MEM_READ_WRITE) {
         initialize(context, size, sizeof(T), name, flags);
     }
     /**
@@ -151,13 +152,13 @@ public:
      * @param name              the name of the array
      */
     template <class T>
-    void initialize(OpenCLContext& context, cl::Buffer* buffer, int size, const std::string& name) {
+    void initialize(OpenCLContext& context, cl::Buffer* buffer, size_t size, const std::string& name) {
         initialize(context, buffer, size, sizeof(T), name);
     }
     /**
      * Recreate the internal storage to have a different size.
      */
-    void resize(int size);
+    void resize(size_t size);
     /**
      * Get whether this array has been initialized.
      */
@@ -167,7 +168,7 @@ public:
     /**
      * Get the size of the array.
      */
-    int getSize() const {
+    size_t getSize() const {
         return size;
     }
     /**
@@ -207,12 +208,23 @@ public:
         ArrayInterface::download(data);
     }
     /**
-     * Copy the values in an array to the Buffer.
+     * Copy the values from host memory to the array.
      * 
      * @param data     the data to copy
      * @param blocking if true, this call will block until the transfer is complete.
      */
-    void upload(const void* data, bool blocking=true);
+    void upload(const void* data, bool blocking=true) {
+        uploadSubArray(data, 0, getSize(), blocking);
+    }
+    /**
+     * Copy values from host memory to a subset of the array.
+     * 
+     * @param data     the data to copy
+     * @param offset   the index of the element within the array at which the copy should begin
+     * @param elements the number of elements to copy
+     * @param blocking if true, this call will block until the transfer is complete.
+     */
+    void uploadSubArray(const void* data, int offset, int elements, bool blocking=true);
     /**
      * Copy the values in the Buffer to an array.
      * 
@@ -229,7 +241,8 @@ public:
 private:
     OpenCLContext* context;
     cl::Buffer* buffer;
-    int size, elementSize;
+    size_t size;
+    int elementSize;
     cl_int flags;
     bool ownsBuffer;
     std::string name;

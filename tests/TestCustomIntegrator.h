@@ -543,7 +543,7 @@ void testPerDofVariables() {
     integrator.addComputePerDof("v", "v+dt*f/m");
     integrator.addComputePerDof("x", "x+dt*v");
     integrator.addComputePerDof("pos", "x");
-    integrator.addComputePerDof("computed", "step(v)*log(x^2)");
+    integrator.addComputePerDof("computed", "step(v)*log(x^4)");
     Context context(system, integrator, platform);
     context.setPositions(positions);
     vector<Vec3> initialValues(numParticles);
@@ -571,7 +571,7 @@ void testPerDofVariables() {
                 }
                 else {
                     double v = state.getPositions()[j][k];
-                    ASSERT_EQUAL_TOL(log(v*v), values[j][k], 1e-5);
+                    ASSERT_EQUAL_TOL(log(v*v*v*v), values[j][k], 1e-5);
                 }
             }
     }
@@ -1187,6 +1187,30 @@ void testCheckpoint() {
     ASSERT_EQUAL_VEC(b1[0], b3[0], 1e-6);
 }
 
+void testSaveParameters() {
+    // Test that integrator variables get loaded correctly from States.
+    System system;
+    system.addParticle(1.0);
+    CustomIntegrator integrator(0.001);
+    integrator.addGlobalVariable("a", 1.0);
+    integrator.addPerDofVariable("b", 2.0);
+    Context context(system, integrator, platform);
+    vector<Vec3> positions(1, Vec3());
+    context.setPositions(positions);
+    integrator.setGlobalVariable(0, 5.0);
+    vector<Vec3> b1(1, Vec3(1, 2, 3));
+    integrator.setPerDofVariable(0, b1);
+    State savedState = context.getState(State::IntegratorParameters); 
+    integrator.setGlobalVariable(0, 10.0);
+    vector<Vec3> b2(1, Vec3(4, 5, 6));
+    integrator.setPerDofVariable(0, b2);
+    context.setState(savedState);
+    ASSERT_EQUAL(5.0, integrator.getGlobalVariable(0));
+    vector<Vec3> b3;
+    integrator.getPerDofVariable(0, b3);
+    ASSERT_EQUAL_VEC(b1[0], b3[0], 1e-6);
+}
+
 void runPlatformTests();
 
 int main(int argc, char* argv[]) {
@@ -1216,6 +1240,7 @@ int main(int argc, char* argv[]) {
         testRecordEnergy();
         testInitialTemperature();
         testCheckpoint();
+        testSaveParameters();
         runPlatformTests();
     }
     catch(const exception& e) {

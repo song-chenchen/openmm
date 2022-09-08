@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2009-2019 Stanford University and the Authors.      *
+ * Portions copyright (c) 2009-2022 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -26,6 +26,7 @@
 
 #include "openmm/common/IntegrationUtilities.h"
 #include "openmm/common/ComputeContext.h"
+#include "openmm/common/ContextSelector.h"
 #include "CommonKernelSources.h"
 #include "openmm/internal/OSRngSeed.h"
 #include "openmm/HarmonicAngleForce.h"
@@ -36,6 +37,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <map>
+#include <set>
 
 using namespace OpenMM;
 using namespace std;
@@ -292,6 +294,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
     // Record the connections between constraints.
 
     int numCCMA = (int) ccmaConstraints.size();
+    int numCCMAAtoms = 0;
     if (numCCMA > 0) {
         // Record information needed by ReferenceCCMAAlgorithm.
         
@@ -354,14 +357,26 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
             for (int j = 0; j < (int)matrix[i].size(); ++j)
                 matrix[i][j].first = inverseOrder[matrix[i][j].first];
 
+        // Make a list of all atoms that involve a CCMA constraint.
+
+        set<int> ccmaAtomsSet;
+        for (int i = 0; i < numCCMA; i++) {
+            ccmaAtomsSet.insert(atom1[ccmaConstraints[i]]);
+            ccmaAtomsSet.insert(atom2[ccmaConstraints[i]]);
+        }
+        vector<int> ccmaAtomsVec(ccmaAtomsSet.begin(), ccmaAtomsSet.end());
+        sort(ccmaAtomsVec.begin(), ccmaAtomsVec.end());
+        numCCMAAtoms = ccmaAtomsVec.size();
+
         // Record the CCMA data structures.
 
-        ccmaAtoms.initialize<mm_int2>(context, numCCMA, "CcmaAtoms");
+        ccmaAtoms.initialize<int>(context, numCCMAAtoms, "ccmaAtoms");
+        ccmaConstraintAtoms.initialize<mm_int2>(context, numCCMA, "ccmaConstraintAtoms");
         ccmaAtomConstraints.initialize<int>(context, numAtoms*maxAtomConstraints, "CcmaAtomConstraints");
         ccmaNumAtomConstraints.initialize<int>(context, numAtoms, "CcmaAtomConstraintsIndex");
         ccmaConstraintMatrixColumn.initialize<int>(context, numCCMA*maxRowElements, "ConstraintMatrixColumn");
         ccmaConverged.initialize<int>(context, 2, "ccmaConverged");
-        vector<mm_int2> atomsVec(ccmaAtoms.getSize());
+        vector<mm_int2> atomsVec(ccmaConstraintAtoms.getSize());
         vector<int> atomConstraintsVec(ccmaAtomConstraints.getSize());
         vector<int> numAtomConstraintsVec(ccmaNumAtomConstraints.getSize());
         vector<int> constraintMatrixColumnVec(ccmaConstraintMatrixColumn.getSize());
@@ -397,7 +412,8 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
                 atomConstraintsVec[i+j*numAtoms] = (forward ? inverseOrder[atomConstraints[i][j]]+1 : -inverseOrder[atomConstraints[i][j]]-1);
             }
         }
-        ccmaAtoms.upload(atomsVec);
+        ccmaAtoms.upload(ccmaAtomsVec);
+        ccmaConstraintAtoms.upload(atomsVec);
         ccmaAtomConstraints.upload(atomConstraintsVec);
         ccmaNumAtomConstraints.upload(numAtomConstraintsVec);
         ccmaConstraintMatrixColumn.upload(constraintMatrixColumnVec);
@@ -512,12 +528,11 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
     for (int i = 0; i < numAtoms; i++)
         if (atomCounts[i] > 1)
             hasOverlappingVsites = true;
-    if (hasOverlappingVsites && !context.getSupports64BitGlobalAtomics())
-        throw OpenMMException("This device does not support 64 bit atomics.  Cannot have multiple virtual sites that depend on the same atom.");
 
     // Create the kernels used by this class.
 
     map<string, string> defines;
+    defines["NUM_CCMA_ATOMS"] = context.intToString(numCCMAAtoms);
     defines["NUM_CCMA_CONSTRAINTS"] = context.intToString(numCCMA);
     defines["NUM_ATOMS"] = context.intToString(numAtoms);
     defines["NUM_2_AVERAGE"] = context.intToString(num2Avg);
@@ -532,11 +547,12 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
     settleVelKernel = program->createKernel("applySettleToVelocities");
     shakePosKernel = program->createKernel("applyShakeToPositions");
     shakeVelKernel = program->createKernel("applyShakeToVelocities");
-    ccmaDirectionsKernel = program->createKernel("computeCCMAConstraintDirections");
-    ccmaPosForceKernel = program->createKernel("computeCCMAPositionConstraintForce");
-    ccmaVelForceKernel = program->createKernel("computeCCMAVelocityConstraintForce");
-    ccmaMultiplyKernel = program->createKernel("multiplyByCCMAConstraintMatrix");
-    ccmaUpdateKernel = program->createKernel("updateCCMAAtomPositions");
+    ccmaDirectionsKernel = program->createKernel("computeCCMAConstraintDirectionsKernel");
+    ccmaPosForceKernel = program->createKernel("computeCCMAPositionConstraintForceKernel");
+    ccmaVelForceKernel = program->createKernel("computeCCMAVelocityConstraintForceKernel");
+    ccmaMultiplyKernel = program->createKernel("multiplyByCCMAConstraintMatrixKernel");
+    ccmaUpdateKernel = program->createKernel("updateCCMAAtomPositionsKernel");
+    ccmaFullKernel = program->createKernel("runCCMA");
     vsitePositionKernel = program->createKernel("computeVirtualSites");
     vsiteForceKernel = program->createKernel("distributeVirtualSiteForces");
     vsiteSaveForcesKernel = program->createKernel("saveDistributedForces");
@@ -584,7 +600,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
     // Set arguments for constraint kernels.
 
     if (settleAtoms.isInitialized()) {
-        settlePosKernel->addArg(settleAtoms.getSize());
+        settlePosKernel->addArg((int) settleAtoms.getSize());
         settlePosKernel->addArg();
         settlePosKernel->addArg(context.getPosq());
         settlePosKernel->addArg(posDelta);
@@ -593,7 +609,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         settlePosKernel->addArg(settleParams);
         if (context.getUseMixedPrecision())
             settlePosKernel->addArg(context.getPosqCorrection());
-        settleVelKernel->addArg(settleAtoms.getSize());
+        settleVelKernel->addArg((int) settleAtoms.getSize());
         settleVelKernel->addArg();
         settleVelKernel->addArg(context.getPosq());
         settleVelKernel->addArg(posDelta);
@@ -604,7 +620,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
             settleVelKernel->addArg(context.getPosqCorrection());
     }
     if (shakeAtoms.isInitialized()) {
-        shakePosKernel->addArg(shakeAtoms.getSize());
+        shakePosKernel->addArg((int) shakeAtoms.getSize());
         shakePosKernel->addArg();
         shakePosKernel->addArg(context.getPosq());
         shakePosKernel->addArg(posDelta);
@@ -612,7 +628,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         shakePosKernel->addArg(shakeParams);
         if (context.getUseMixedPrecision())
             shakePosKernel->addArg(context.getPosqCorrection());
-        shakeVelKernel->addArg(shakeAtoms.getSize());
+        shakeVelKernel->addArg((int) shakeAtoms.getSize());
         shakeVelKernel->addArg();
         shakeVelKernel->addArg(context.getPosq());
         shakeVelKernel->addArg(context.getVelm());
@@ -621,14 +637,14 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         if (context.getUseMixedPrecision())
             shakeVelKernel->addArg(context.getPosqCorrection());
     }
-    if (ccmaAtoms.isInitialized()) {
-        ccmaDirectionsKernel->addArg(ccmaAtoms);
+    if (ccmaConstraintAtoms.isInitialized()) {
+        ccmaDirectionsKernel->addArg(ccmaConstraintAtoms);
         ccmaDirectionsKernel->addArg(ccmaDistance);
         ccmaDirectionsKernel->addArg(context.getPosq());
         ccmaDirectionsKernel->addArg(ccmaConverged);
         if (context.getUseMixedPrecision())
             ccmaDirectionsKernel->addArg(context.getPosqCorrection());
-        ccmaPosForceKernel->addArg(ccmaAtoms);
+        ccmaPosForceKernel->addArg(ccmaConstraintAtoms);
         ccmaPosForceKernel->addArg(ccmaDistance);
         ccmaPosForceKernel->addArg(posDelta);
         ccmaPosForceKernel->addArg(ccmaReducedMass);
@@ -637,7 +653,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaPosForceKernel->addArg();
         ccmaPosForceKernel->addArg();
         ccmaPosForceKernel->addArg();
-        ccmaVelForceKernel->addArg(ccmaAtoms);
+        ccmaVelForceKernel->addArg(ccmaConstraintAtoms);
         ccmaVelForceKernel->addArg(ccmaDistance);
         ccmaVelForceKernel->addArg(context.getVelm());
         ccmaVelForceKernel->addArg(ccmaReducedMass);
@@ -652,6 +668,7 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaMultiplyKernel->addArg(ccmaConstraintMatrixValue);
         ccmaMultiplyKernel->addArg(ccmaConverged);
         ccmaMultiplyKernel->addArg();
+        ccmaUpdateKernel->addArg(ccmaAtoms);
         ccmaUpdateKernel->addArg(ccmaNumAtomConstraints);
         ccmaUpdateKernel->addArg(ccmaAtomConstraints);
         ccmaUpdateKernel->addArg(ccmaDistance);
@@ -661,6 +678,23 @@ IntegrationUtilities::IntegrationUtilities(ComputeContext& context, const System
         ccmaUpdateKernel->addArg(ccmaDelta2);
         ccmaUpdateKernel->addArg(ccmaConverged);
         ccmaUpdateKernel->addArg();
+        ccmaFullKernel->addArg();
+        ccmaFullKernel->addArg(ccmaAtoms);
+        ccmaFullKernel->addArg(ccmaNumAtomConstraints);
+        ccmaFullKernel->addArg(ccmaAtomConstraints);
+        ccmaFullKernel->addArg(ccmaConstraintAtoms);
+        ccmaFullKernel->addArg(ccmaDistance);
+        ccmaFullKernel->addArg(context.getPosq());
+        ccmaFullKernel->addArg(context.getVelm());
+        ccmaFullKernel->addArg(posDelta);
+        ccmaFullKernel->addArg(ccmaReducedMass);
+        ccmaFullKernel->addArg(ccmaDelta1);
+        ccmaFullKernel->addArg(ccmaDelta2);
+        ccmaFullKernel->addArg(ccmaConstraintMatrixColumn);
+        ccmaFullKernel->addArg(ccmaConstraintMatrixValue);
+        ccmaFullKernel->addArg();
+        if (context.getUseMixedPrecision())
+            ccmaFullKernel->addArg(context.getPosqCorrection());
     }
 
     // Arguments for time shift kernel will be set later.
@@ -701,6 +735,7 @@ void IntegrationUtilities::applyVelocityConstraints(double tol) {
 }
 
 void IntegrationUtilities::computeVirtualSites() {
+    ContextSelector selector(context);
     if (numVsites > 0)
         vsitePositionKernel->execute(numVsites);
 }
@@ -718,7 +753,7 @@ void IntegrationUtilities::initRandomNumberGenerator(unsigned int randomNumberSe
     random.initialize<mm_float4>(context, 4*context.getPaddedNumAtoms(), "random");
     randomSeed.initialize<mm_int4>(context, context.getNumThreadBlocks()*64, "randomSeed");
     randomPos = random.getSize();
-    randomKernel->addArg(random.getSize());
+    randomKernel->addArg((int) random.getSize());
     randomKernel->addArg(random);
     randomKernel->addArg(randomSeed);
 
@@ -777,6 +812,7 @@ void IntegrationUtilities::loadCheckpoint(istream& stream) {
 }
 
 double IntegrationUtilities::computeKineticEnergy(double timeShift) {
+    ContextSelector selector(context);
     int numParticles = context.getNumAtoms();
     if (timeShift != 0) {
         // Copy the velocities into the posDelta array while we temporarily modify them.
@@ -799,7 +835,7 @@ double IntegrationUtilities::computeKineticEnergy(double timeShift) {
     
     double energy = 0.0;
     if (context.getUseDoublePrecision() || context.getUseMixedPrecision()) {
-        vector<mm_double4> velm;
+        auto velm = (mm_double4*)context.getPinnedBuffer();
         context.getVelm().download(velm);
         for (int i = 0; i < numParticles; i++) {
             mm_double4 v = velm[i];
@@ -808,7 +844,7 @@ double IntegrationUtilities::computeKineticEnergy(double timeShift) {
         }
     }
     else {
-        vector<mm_float4> velm;
+        auto velm = (mm_float4*)context.getPinnedBuffer();
         context.getVelm().download(velm);
         for (int i = 0; i < numParticles; i++) {
             mm_float4 v = velm[i];
@@ -822,4 +858,50 @@ double IntegrationUtilities::computeKineticEnergy(double timeShift) {
     if (timeShift != 0)
         posDelta.copyTo(context.getVelm());
     return 0.5*energy;
+}
+
+void IntegrationUtilities::computeShiftedVelocities(double timeShift, vector<Vec3>& velocities) {
+    ContextSelector selector(context);
+    int numParticles = context.getNumAtoms();
+    if (timeShift != 0) {
+        // Copy the velocities into the posDelta array while we temporarily modify them.
+
+        context.getVelm().copyTo(posDelta);
+
+        // Apply the time shift.
+
+        timeShiftKernel->setArg(0, context.getVelm());
+        timeShiftKernel->setArg(1, context.getLongForceBuffer());
+        if (context.getUseDoublePrecision())
+            timeShiftKernel->setArg(2, timeShift);
+        else
+            timeShiftKernel->setArg(2, (float) timeShift);
+        timeShiftKernel->execute(numParticles);
+        applyConstraintsImpl(true, 1e-4);
+    }
+    
+    // Retrieve the velocities.
+    
+    velocities.resize(numParticles);
+    if (context.getUseDoublePrecision() || context.getUseMixedPrecision()) {
+        auto velm = (mm_double4*)context.getPinnedBuffer();
+        context.getVelm().download(velm);
+        for (int i = 0; i < numParticles; i++) {
+            mm_double4 v = velm[i];
+            velocities[i] = Vec3(v.x, v.y, v.z);
+        }
+    }
+    else {
+        auto velm = (mm_float4*)context.getPinnedBuffer();
+        context.getVelm().download(velm);
+        for (int i = 0; i < numParticles; i++) {
+            mm_float4 v = velm[i];
+            velocities[i] = Vec3(v.x, v.y, v.z);
+        }
+    }
+    
+    // Restore the velocities.
+    
+    if (timeShift != 0)
+        posDelta.copyTo(context.getVelm());
 }

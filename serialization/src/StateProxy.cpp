@@ -6,7 +6,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2010-2015 Stanford University and the Authors.      *
+ * Portions copyright (c) 2010-2021 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -47,6 +47,7 @@ void StateProxy::serialize(const void* object, SerializationNode& node) const {
     node.setStringProperty("openmmVersion", Platform::getOpenMMVersion());
     const State& s = *reinterpret_cast<const State*>(object);
     node.setDoubleProperty("time", s.getTime());
+    node.setLongProperty("stepCount", s.getStepCount());
     Vec3 a,b,c;
     s.getPeriodicBoxVectors(a,b,c);
     SerializationNode& boxVectorsNode = node.createChildNode("PeriodicBoxVectors");
@@ -89,12 +90,16 @@ void StateProxy::serialize(const void* object, SerializationNode& node) const {
             forcesNode.createChildNode("Force").setDoubleProperty("x", stateForces[i][0]).setDoubleProperty("y", stateForces[i][1]).setDoubleProperty("z", stateForces[i][2]);
         }
     }
+    if ((s.getDataTypes()&State::IntegratorParameters) != 0) {
+        node.getChildren().push_back(s.getIntegratorParameters());
+    }
 }
 
 void* StateProxy::deserialize(const SerializationNode& node) const {
     if (node.getIntProperty("version") != 1)
         throw OpenMMException("Unsupported version number");
     double outTime = node.getDoubleProperty("time");
+    long long outStepCount = node.getLongProperty("stepCount", 0);
     const SerializationNode& boxVectorsNode = node.getChildNode("PeriodicBoxVectors");
     const SerializationNode& AVec = boxVectorsNode.getChildNode("A");
     Vec3 outAVec(AVec.getDoubleProperty("x"),AVec.getDoubleProperty("y"),AVec.getDoubleProperty("z"));
@@ -104,7 +109,7 @@ void* StateProxy::deserialize(const SerializationNode& node) const {
     Vec3 outCVec(CVec.getDoubleProperty("x"),CVec.getDoubleProperty("y"),CVec.getDoubleProperty("z"));
     int types = 0;
     vector<int> arraySizes;
-    State::StateBuilder builder(outTime);
+    State::StateBuilder builder(outTime, outStepCount);
     for (auto& child : node.getChildren()) {
         if (child.getName() == "Parameters") {
             map<string, double> outStateParams;
@@ -137,6 +142,9 @@ void* StateProxy::deserialize(const SerializationNode& node) const {
                 outForces.push_back(Vec3(particle.getDoubleProperty("x"),particle.getDoubleProperty("y"),particle.getDoubleProperty("z")));
             builder.setForces(outForces);
             arraySizes.push_back(outForces.size());
+        }
+        else if (child.getName() == "IntegratorParameters") {
+            builder.updateIntegratorParameters() = child;
         }
     }
     for (int i = 1; i < arraySizes.size(); i++) {
