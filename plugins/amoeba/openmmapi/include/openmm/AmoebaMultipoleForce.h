@@ -89,8 +89,12 @@ public:
          * to set the coefficients used for the extrapolation.  The default coefficients used in this release are
          * [-0.154, 0.017, 0.658, 0.474], but be aware that those may change in a future release.
          */
-        Extrapolated = 2
+        Extrapolated = 2,
 
+        /**
+            QM/MM: set induced dipoles to zero
+         */
+        Zero = 3
     };
 
     enum MultipoleAxisTypes { ZThenX = 0, Bisector = 1, ZBisect = 2, ThreeFold = 3, ZOnly = 4, NoAxisType = 5, LastAxisTypeIndex = 6 };
@@ -442,6 +446,18 @@ public:
     bool usesPeriodicBoundaryConditions() const {
         return nonbondedMethod == AmoebaMultipoleForce::PME;
     }
+
+    // QM/MM interface
+    void getLabFramePermanentMultipoles(Context& context, std::vector<double>& charges, std::vector<double>& dipoles, std::vector<double>& quadrupoles);
+    
+    void getPermanentMultipoleFields(Context& cotext, std::vector<Vec3>& fields);  
+    void getForcesFromTorques(Context& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces); 
+
+    void getForcesFromInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
+
+    void getForcesBetweenInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
+   
+    void getInducedDipoleMutualIxns(Context& context, std::vector<double>& Matrix);
 protected:
     ForceImpl* createImpl() const;
 private:

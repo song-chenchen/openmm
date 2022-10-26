@@ -133,6 +133,16 @@ public:
      * @param nz      the number of grid points along the Z axis
      */
     virtual void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const = 0;
+
+    // QM/MM interface
+    virtual void getLabFramePermanentMultipoles(ContextImpl& context, std::vector<double>& charges, std::vector<double>& dipoles, std::vector<double>& quadrupoles) = 0;
+    virtual void getPermanentMultipoleFields(ContextImpl& cotext, std::vector<Vec3>& fields) = 0;  
+    virtual void getForcesFromTorques(ContextImpl& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces) = 0; 
+
+    virtual void getForcesFromInducedDipoles(ContextImpl& context, const std::vector<Vec3>& dDipoles, const std::vector<Vec3>& pDipoles, std::vector<Vec3>& forces) = 0;  
+    virtual void getForcesBetweenInducedDipoles(ContextImpl& context, const std::vector<Vec3>& dDipoles, const std::vector<Vec3>& pDipoles, std::vector<Vec3>& forces) = 0;  
+    virtual void getInducedDipoleMutualIxns(ContextImpl& context, std::vector<double>& Matrix) = 0;
+
 };
 
 /**
