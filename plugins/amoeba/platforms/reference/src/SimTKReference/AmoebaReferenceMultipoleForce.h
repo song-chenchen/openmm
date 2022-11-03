@@ -701,7 +701,8 @@ public:
                                            const std::vector<int>& multipoleAtomXs,
                                            const std::vector<int>& multipoleAtomYs,
                                            const std::vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
-                                           std::vector<Vec3>& outputFields
+                                           std::vector<Vec3>& outputFields,
+                                           std::vector<Vec3>& outputFieldsPolar
                                            );
 
     void calculateForcesFromTorques(const std::vector<Vec3>& particlePositions,

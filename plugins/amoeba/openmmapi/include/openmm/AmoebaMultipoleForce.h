@@ -450,7 +450,7 @@ public:
     // QM/MM interface
     void getLabFramePermanentMultipoles(Context& context, std::vector<double>& charges, std::vector<double>& dipoles, std::vector<double>& quadrupoles);
     
-    void getPermanentMultipoleFields(Context& cotext, std::vector<Vec3>& fields);  
+    void getPermanentMultipoleFields(Context& cotext, std::vector<Vec3>& fields, std::vector<Vec3>& fieldsPolar);  
     void getForcesFromTorques(Context& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces); 
 
     void getForcesFromInducedDipoles(Context& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  

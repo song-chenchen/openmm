@@ -282,8 +282,8 @@ void AmoebaMultipoleForce::getLabFramePermanentMultipoles(Context& context, std:
     dynamic_cast<AmoebaMultipoleForceImpl&>(getImplInContext(context)).getLabFramePermanentMultipoles(getContextImpl(context), charges, dipoles, quadrupoles);
 }
 
-void AmoebaMultipoleForce::getPermanentMultipoleFields(Context& context, std::vector<Vec3>& fields) {
-    dynamic_cast<AmoebaMultipoleForceImpl&>(getImplInContext(context)).getPermanentMultipoleFields(getContextImpl(context), fields);
+void AmoebaMultipoleForce::getPermanentMultipoleFields(Context& context, std::vector<Vec3>& fields, std::vector<Vec3>& fieldsPolar) {
+    dynamic_cast<AmoebaMultipoleForceImpl&>(getImplInContext(context)).getPermanentMultipoleFields(getContextImpl(context), fields, fieldsPolar);
 }
 
 void AmoebaMultipoleForce::getForcesFromTorques(Context& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces) {

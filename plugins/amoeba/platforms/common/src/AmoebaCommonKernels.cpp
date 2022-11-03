@@ -1731,7 +1731,7 @@ void CommonCalcAmoebaMultipoleForceKernel::getLabFramePermanentMultipoles(Contex
     throw OpenMMException("getLabFramePermanentMultipoles not implemented for cuda");
 }
 
-void CommonCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields) {
+void CommonCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields, vector<Vec3>& outputFieldsPolar) {
     throw OpenMMException("getLabFramePermanentMultipoleFields not implemented for cuda");
 
 }

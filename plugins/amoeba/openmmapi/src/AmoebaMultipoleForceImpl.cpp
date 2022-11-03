@@ -236,8 +236,8 @@ void AmoebaMultipoleForceImpl::getLabFramePermanentMultipoles(ContextImpl& conte
     kernel.getAs<CalcAmoebaMultipoleForceKernel>().getLabFramePermanentMultipoles(context, charges, dipoles, quadrupoles);
 }
 
-void AmoebaMultipoleForceImpl::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& fields) {
-    kernel.getAs<CalcAmoebaMultipoleForceKernel>().getPermanentMultipoleFields(context, fields);
+void AmoebaMultipoleForceImpl::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& fields, vector<Vec3>& fieldsPolar) {
+    kernel.getAs<CalcAmoebaMultipoleForceKernel>().getPermanentMultipoleFields(context, fields, fieldsPolar);
 }
 
 void AmoebaMultipoleForceImpl::getForcesFromTorques(ContextImpl& context, const vector<Vec3>& torques, vector<Vec3>& forces) {

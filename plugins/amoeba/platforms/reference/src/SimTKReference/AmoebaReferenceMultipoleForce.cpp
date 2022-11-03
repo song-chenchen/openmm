@@ -85,11 +85,8 @@ void AmoebaReferenceMultipoleForce::initialize()
     _pScale[index++]      = 0.0;
     _pScale[index++]      = 0.0;
     _pScale[index++]      = 0.0;
-    _pScale[index++]      = 0.0;
-    _pScale[index++]      = 0.0;
-// DEBUG
-//    _pScale[index++]      = 1.0;
-//    _pScale[index++]      = 1.0;
+    _pScale[index++]      = 1.0;
+    _pScale[index++]      = 1.0;
 
     index                 = 0;
     _uScale[index++]      = 1.0;
@@ -2219,7 +2216,8 @@ void AmoebaReferenceMultipoleForce::calculatePermanentMultipoleFields(const vect
                                                                       const vector<int>& multipoleAtomXs,
                                                                       const vector<int>& multipoleAtomYs,
                                                                       const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
-                                                                      vector<Vec3>& outputFields 
+                                                                      vector<Vec3>& outputFields,
+                                                                      vector<Vec3>& outputFieldsPolar
 
                                                                       ) {
     // setup, including calculating permanent dipoles
@@ -2235,9 +2233,11 @@ void AmoebaReferenceMultipoleForce::calculatePermanentMultipoleFields(const vect
 
 
     // save charge
-    outputFields.resize(_numParticles); 
+    outputFields.resize(_numParticles);
+    outputFieldsPolar.resize(_numParticles); 
     for (int i = 0; i < _numParticles; i++){
         outputFields[i] = _fixedMultipoleField[i]* _electric ; // FACTOR
+        outputFieldsPolar[i] = _fixedMultipoleFieldPolar[i]* _electric;
 //        printf("fixedMultipoleField[%d]     : %f %f %f\n", i,  _fixedMultipoleField[i][0],  _fixedMultipoleField[i][1],  _fixedMultipoleField[i][2]);
 //        printf("fixedMultipoleFieldPolar[%d]: %f %f %f\n", i,  _fixedMultipoleFieldPolar[i][0],  _fixedMultipoleFieldPolar[i][1],  _fixedMultipoleFieldPolar[i][2]);
 

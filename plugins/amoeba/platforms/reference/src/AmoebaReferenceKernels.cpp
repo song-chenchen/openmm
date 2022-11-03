@@ -534,7 +534,7 @@ void ReferenceCalcAmoebaMultipoleForceKernel::getLabFramePermanentMultipoles(Con
     delete amoebaReferenceMultipoleForce;
 }
 
-void ReferenceCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields) {
+void ReferenceCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields, vector<Vec3>& outputFieldsPolar) {
 
     // Create an AmoebaReferenceMultipoleForce to do the calculation.
     
@@ -543,7 +543,7 @@ void ReferenceCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(Contex
     
     // calculate 
     amoebaReferenceMultipoleForce->calculatePermanentMultipoleFields(posData, charges, dipoles, quadrupoles, tholes, 
-            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, outputFields);
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, multipoleAtomCovalentInfo, outputFields, outputFieldsPolar);
 
     delete amoebaReferenceMultipoleForce;
 }

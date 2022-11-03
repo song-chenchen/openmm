@@ -154,7 +154,7 @@ public:
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
     // QM/MM interface
     void getLabFramePermanentMultipoles(ContextImpl& context, std::vector<double>& charges, std::vector<double>& dipoles, std::vector<double>& quadrupoles);
-    void getPermanentMultipoleFields(ContextImpl& cotext, std::vector<Vec3>& fields);  
+    void getPermanentMultipoleFields(ContextImpl& cotext, std::vector<Vec3>& fields, std::vector<Vec3>& fieldsPolar);  
     void getForcesFromTorques(ContextImpl& context, const std::vector<Vec3>& torques, std::vector<Vec3>& forces); 
 
     void getForcesFromInducedDipoles(ContextImpl& context, const std::vector<Vec3>& inducedDipoles, const std::vector<Vec3>& inducedPolarDipoles, std::vector<Vec3>& forces);  
