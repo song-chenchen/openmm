@@ -1066,6 +1066,19 @@ void AmoebaReferenceMultipoleForce::calculateInducedDipoles(const vector<Multipo
 
     _inducedDipole.resize(_numParticles);
     _inducedDipolePolar.resize(_numParticles);
+
+    // QM/MM
+    if (getPolarizationType()== AmoebaReferenceMultipoleForce::Zero) {
+        for(int i=0; i< _numParticles; i++){
+            for(int x=0; x< 3; x++){ 
+                _inducedDipole[i][x] = 0.0;
+                _inducedDipolePolar[i][x] = 0.0;
+            }
+        }
+        setMutualInducedDipoleConverged(true);
+        return;
+    }
+
     vector<UpdateInducedDipoleFieldStruct> updateInducedDipoleField;
     updateInducedDipoleField.push_back(UpdateInducedDipoleFieldStruct(_fixedMultipoleField, _inducedDipole, _ptDipoleD, _ptDipoleFieldGradientD));
     updateInducedDipoleField.push_back(UpdateInducedDipoleFieldStruct(_fixedMultipoleFieldPolar, _inducedDipolePolar, _ptDipoleP, _ptDipoleFieldGradientP));
@@ -2114,6 +2127,300 @@ AmoebaReferenceMultipoleForce::UpdateInducedDipoleFieldStruct::UpdateInducedDipo
     inducedDipoleField.resize(fixedMultipoleField->size());
 }
 
+// QM/MM interface
+void AmoebaReferenceMultipoleForce::setupPermanent(const vector<Vec3>& particlePositions,
+                                          const vector<double>& charges,
+                                          const vector<double>& dipoles,
+                                          const vector<double>& quadrupoles,
+                                          const vector<double>& tholes,
+                                          const vector<double>& dampingFactors,
+                                          const vector<double>& polarity,
+                                          const vector<int>& axisTypes,
+                                          const vector<int>& multipoleAtomZs,
+                                          const vector<int>& multipoleAtomXs,
+                                          const vector<int>& multipoleAtomYs,
+                                          const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                          vector<MultipoleParticleData>& particleData)
+{
+
+
+    // load particle parameters into vector of MultipoleParticleData
+    // check for inverted chiral centers
+    // apply rotation matrix to get lab frame dipole and quadrupoles
+    // setup scaling factors
+    // get induced dipoles
+    // check if induced dipoles converged
+
+    _numParticles = particlePositions.size();
+    loadParticleData(particlePositions, charges, dipoles, quadrupoles,
+                      tholes, dampingFactors, polarity, particleData);
+
+    checkChiral(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, axisTypes);
+
+    applyRotationMatrix(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, axisTypes);
+
+    setupScaleMaps(multipoleAtomCovalentInfo);
+}
+
+void AmoebaReferenceMultipoleForce::calculateLabFramePermanentMultipoles(const vector<Vec3>& particlePositions,
+                                                                      const vector<double>& charges,
+                                                                      const vector<double>& dipoles,
+                                                                      const vector<double>& quadrupoles,
+                                                                      const vector<double>& tholes,
+                                                                      const vector<double>& dampingFactors,
+                                                                      const vector<double>& polarity,
+                                                                      const vector<int>& axisTypes,
+                                                                      const vector<int>& multipoleAtomZs,
+                                                                      const vector<int>& multipoleAtomXs,
+                                                                      const vector<int>& multipoleAtomYs,
+                                                                      const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                                                      vector<double>& outputRotatedPermanentCharges,
+                                                                      vector<double>& outputRotatedPermanentDipoles,
+                                                                      vector<double>& outputRotatedPermanentQuadrupoles
+
+                                                                      ) {
+    // setup, including calculating permanent dipoles
+
+    vector<MultipoleParticleData> particleData;
+    setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
+           dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
+           multipoleAtomCovalentInfo, particleData);
+
+    // save charge
+    outputRotatedPermanentCharges.resize(_numParticles); 
+    for (int i = 0; i < _numParticles; i++)
+        outputRotatedPermanentCharges[i] = particleData[i].charge;
+
+    // save dipole
+    outputRotatedPermanentDipoles.resize(_numParticles*3);
+    for (int i = 0, idx=0; i < _numParticles; i++, idx+=3){
+        outputRotatedPermanentDipoles[idx  ] = particleData[i].dipole[0];
+        outputRotatedPermanentDipoles[idx+1] = particleData[i].dipole[1];
+        outputRotatedPermanentDipoles[idx+2] = particleData[i].dipole[2];
+    }
+
+    // save quadrupole
+    outputRotatedPermanentQuadrupoles.resize(_numParticles*6);
+    for (int i = 0, idx=0; i < _numParticles; i++, idx+=6){
+        for(int j=0; j< 6; j++){
+            outputRotatedPermanentQuadrupoles[idx+j] = particleData[i].quadrupole[j];
+        }
+    }
+}
+
+void AmoebaReferenceMultipoleForce::calculatePermanentMultipoleFields(const vector<Vec3>& particlePositions,
+                                                                      const vector<double>& charges,
+                                                                      const vector<double>& dipoles,
+                                                                      const vector<double>& quadrupoles,
+                                                                      const vector<double>& tholes,
+                                                                      const vector<double>& dampingFactors,
+                                                                      const vector<double>& polarity,
+                                                                      const vector<int>& axisTypes,
+                                                                      const vector<int>& multipoleAtomZs,
+                                                                      const vector<int>& multipoleAtomXs,
+                                                                      const vector<int>& multipoleAtomYs,
+                                                                      const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                                                      vector<Vec3>& outputFields,
+                                                                      vector<Vec3>& outputFieldsPolar
+
+                                                                      ) {
+    // setup, including calculating permanent dipoles
+
+    vector<MultipoleParticleData> particleData;
+    setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
+           dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
+           multipoleAtomCovalentInfo, particleData);
+
+    // calculate fixed electric fields
+    zeroFixedMultipoleFields();
+    calculateFixedMultipoleField(particleData);
+
+
+    // save charge
+    outputFields.resize(_numParticles);
+    outputFieldsPolar.resize(_numParticles); 
+    for (int i = 0; i < _numParticles; i++){
+        outputFields[i] = _fixedMultipoleField[i]* _electric ; // FACTOR
+        outputFieldsPolar[i] = _fixedMultipoleFieldPolar[i]* _electric;
+//        printf("fixedMultipoleField[%d]     : %f %f %f\n", i,  _fixedMultipoleField[i][0],  _fixedMultipoleField[i][1],  _fixedMultipoleField[i][2]);
+//        printf("fixedMultipoleFieldPolar[%d]: %f %f %f\n", i,  _fixedMultipoleFieldPolar[i][0],  _fixedMultipoleFieldPolar[i][1],  _fixedMultipoleFieldPolar[i][2]);
+
+    }
+}
+
+void AmoebaReferenceMultipoleForce::calculateForcesFromTorques(const vector<Vec3>& particlePositions,
+                                                                      const vector<double>& charges,
+                                                                      const vector<double>& dipoles,
+                                                                      const vector<double>& quadrupoles,
+                                                                      const vector<double>& tholes,
+                                                                      const vector<double>& dampingFactors,
+                                                                      const vector<double>& polarity,
+                                                                      const vector<int>& axisTypes,
+                                                                      const vector<int>& multipoleAtomZs,
+                                                                      const vector<int>& multipoleAtomXs,
+                                                                      const vector<int>& multipoleAtomYs,
+                                                                      const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                                                      const vector<Vec3>& torques,
+                                                                      vector<Vec3>& forces 
+                                                                      ) {
+    // setup
+    vector<MultipoleParticleData> particleData;
+    setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
+           dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
+           multipoleAtomCovalentInfo, particleData);
+
+    // forces
+    forces.resize(_numParticles);
+    for(int i=0; i< _numParticles; i++){
+        forces[i][0] = 0;
+        forces[i][1] = 0;
+        forces[i][2] = 0;
+    }
+    
+    vector<Vec3> itorques;
+    itorques.resize(_numParticles);
+    for(int i=0; i< _numParticles; i++)
+        itorques[i] = torques[i];
+    mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, axisTypes, itorques, forces);
+}
+
+void AmoebaReferenceMultipoleForce::calculateForcesFromInducedDipoles(const vector<Vec3>& particlePositions,
+                                                                      const vector<double>& charges,
+                                                                      const vector<double>& dipoles,
+                                                                      const vector<double>& quadrupoles,
+                                                                      const vector<double>& tholes,
+                                                                      const vector<double>& dampingFactors,
+                                                                      const vector<double>& polarity,
+                                                                      const vector<int>& axisTypes,
+                                                                      const vector<int>& multipoleAtomZs,
+                                                                      const vector<int>& multipoleAtomXs,
+                                                                      const vector<int>& multipoleAtomYs,
+                                                                      const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                                                      const vector<Vec3>& inducedDipoles,
+                                                                      const vector<Vec3>& inducedPolarDipoles,
+                                                                      vector<Vec3>& forces 
+                                                                      ) {
+    // setup
+    vector<MultipoleParticleData> particleData;
+    setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
+           dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
+           multipoleAtomCovalentInfo, particleData);
+
+    // set induced dipoles
+    _inducedDipole.resize(_numParticles);
+    _inducedDipolePolar.resize(_numParticles);
+    for(int i=0; i< _numParticles; i++){
+        _inducedDipole[i] = inducedDipoles[i];
+        _inducedDipolePolar[i] = inducedPolarDipoles[i];
+    }
+
+    // forces
+    forces.resize(_numParticles);
+    for(int i=0; i< _numParticles; i++){
+        forces[i][0] = 0;
+        forces[i][1] = 0;
+        forces[i][2] = 0;
+    }
+
+    // compute force
+    vector<Vec3> torques;
+    initializeVec3Vector(torques);
+    double energy = calculateElectrostatic(particleData, torques, forces);
+
+    mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, axisTypes, torques, forces);
+}
+
+void AmoebaReferenceMultipoleForce::calculateInducedDipolePairMutualIxn(const MultipoleParticleData& particleI,
+                                                                   const MultipoleParticleData& particleJ,
+                                                                   const vector<Vec3>& inducedDipoles,
+                                                                   vector<Vec3>& inducedDipoleField
+                                                                   ){
+
+   if (particleI.particleIndex == particleJ.particleIndex)
+       return;
+
+    Vec3 deltaR   = particleJ.position - particleI.position;
+    double r      = sqrt(deltaR.dot(deltaR));
+    vector<double> rrI(2);
+
+    getAndScaleInverseRs(particleI.dampingFactor, particleJ.dampingFactor,
+                          particleI.thole, particleJ.thole, r, rrI);
+
+    double rr3       = -rrI[0];
+    double rr5       =  rrI[1];
+       
+    calculateInducedDipolePairIxn(particleI.particleIndex, particleJ.particleIndex, rr3, rr5, deltaR,
+            inducedDipoles, inducedDipoleField);
+
+}
+
+void AmoebaReferenceMultipoleForce::calculateInducedDipoleMutualIxns(const vector<Vec3>& particlePositions,
+                                                                      const vector<double>& charges,
+                                                                      const vector<double>& dipoles,
+                                                                      const vector<double>& quadrupoles,
+                                                                      const vector<double>& tholes,
+                                                                      const vector<double>& dampingFactors,
+                                                                      const vector<double>& polarity,
+                                                                      const vector<int>& axisTypes,
+                                                                      const vector<int>& multipoleAtomZs,
+                                                                      const vector<int>& multipoleAtomXs,
+                                                                      const vector<int>& multipoleAtomYs,
+                                                                      const vector< vector< vector<int> > >& multipoleAtomCovalentInfo,
+                                                                      vector<double>& Matrix 
+        ) {
+
+    // setup
+    vector<MultipoleParticleData> particleData;
+    setupPermanent(particlePositions, charges, dipoles, quadrupoles, tholes,
+            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
+            multipoleAtomCovalentInfo, particleData);
+
+    unsigned int dim = _numParticles*3;
+    Matrix.resize(_numParticles*_numParticles*9);
+
+    // off-diagonal    
+    vector<Vec3> inducedDipoles;
+    vector<Vec3> inducedDipoleFields;
+
+    for (unsigned int ii = 0, iabs=0; ii < particleData.size(); ii++){
+        for(unsigned int xid=0; xid< 3; xid++, iabs++){
+            // zero
+            initializeVec3Vector(inducedDipoles);
+            initializeVec3Vector(inducedDipoleFields);
+
+            // set value
+            inducedDipoles[ii][xid] = -1.0; 
+            for (unsigned int jj = 0; jj < particleData.size(); jj++){
+                calculateInducedDipolePairMutualIxn(particleData[ii], particleData[jj], inducedDipoles, inducedDipoleFields);
+            }
+
+            // save
+            unsigned int offset = iabs* dim;
+            for(unsigned int jj = 0, jabs=0; jj< particleData.size(); jj++){
+                for(unsigned int xjd=0; xjd< 3; xjd ++, jabs++){
+                    Matrix[offset + jabs] = inducedDipoleFields[jj][xjd]; 
+                }
+            }
+        }
+    }
+
+    // diagonal = 1.0/polar
+    for(unsigned int i=0, ii=0; i< _numParticles; i++, ii+=3){
+        for(int xid=0; xid< 3; xid++){
+            int idx = ii + xid;
+            Matrix[idx*dim+idx] = 1.0/particleData[i].polarity;
+        }
+    }
+
+    // FACTOR
+    for(unsigned int i=0; i< _numParticles*3; i++)
+        for(unsigned int j=0; j< _numParticles*3; j++)
+            Matrix[i*dim+j] *= _electric;
+
+}
+
+
+// GeneralizedKirkwood
 AmoebaReferenceGeneralizedKirkwoodMultipoleForce::AmoebaReferenceGeneralizedKirkwoodMultipoleForce(AmoebaReferenceGeneralizedKirkwoodForce* amoebaReferenceGeneralizedKirkwoodForce) :
                AmoebaReferenceMultipoleForce(NoCutoff),
                _amoebaReferenceGeneralizedKirkwoodForce(amoebaReferenceGeneralizedKirkwoodForce),

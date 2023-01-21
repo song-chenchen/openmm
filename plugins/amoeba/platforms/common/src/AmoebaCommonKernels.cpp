@@ -1713,6 +1713,33 @@ void CommonCalcAmoebaMultipoleForceKernel::getPMEParameters(double& alpha, int& 
     nz = gridSizeZ;
 }
 
+// QM/MM interface
+void CommonCalcAmoebaMultipoleForceKernel::getLabFramePermanentMultipoles(ContextImpl& context, vector<double>& outputCharges, vector<double>& outputDipoles, vector<double>& outputQuadrupoles) {
+    throw OpenMMException("getLabFramePermanentMultipoles not implemented for cuda");
+}
+
+void CommonCalcAmoebaMultipoleForceKernel::getPermanentMultipoleFields(ContextImpl& context, vector<Vec3>& outputFields, vector<Vec3>& outputFieldsPolar) {
+    throw OpenMMException("getLabFramePermanentMultipoleFields not implemented for cuda");
+
+}
+
+void CommonCalcAmoebaMultipoleForceKernel::getForcesFromTorques(ContextImpl& context, const vector<Vec3>& torques, vector<Vec3>& forces ) {
+    throw OpenMMException("getForcesFromTorques not implemented for cuda");
+}
+
+void CommonCalcAmoebaMultipoleForceKernel::getForcesFromInducedDipoles(ContextImpl& context, const vector<Vec3>& inducedDipoles, const vector<Vec3>& inducedPolarDipoles, vector<Vec3>& forces ) {
+    throw OpenMMException("getForcesFromInducedDipoles not implemented for cuda");
+}
+void CommonCalcAmoebaMultipoleForceKernel::getForcesBetweenInducedDipoles(ContextImpl& context, const vector<Vec3>& inducedDipoles, const vector<Vec3>& inducedPolarDipoles, vector<Vec3>& forces ) {
+    throw OpenMMException("getForcesBetweenInducedDipoles not implemented for cuda");
+}
+
+void CommonCalcAmoebaMultipoleForceKernel::getInducedDipoleMutualIxns(ContextImpl& context, vector<double>& Matrix) {
+    throw OpenMMException("getInducedDipoleMutualIxns not implemented for cuda");
+}
+
+
+
 /* -------------------------------------------------------------------------- *
  *                       AmoebaGeneralizedKirkwood                            *
  * -------------------------------------------------------------------------- */
