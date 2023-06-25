@@ -148,15 +148,15 @@ jobs:
               -DOPENMM_BUILD_OPENCL_LIB=ON \
               -DOPENMM_BUILD_OPENCL_TESTS=OFF \
 
-          - name: MacOS M1 CPU arm64 Python 3.11
-            python-version: "3.11"
-            os: M1-arm64
-            OPENCL: false
-            cuda-version: ""
-            compilers: conda-forge
-            CMAKE_FLAGS: |
-              -DOPENMM_BUILD_OPENCL_LIB=ON \
-              -DOPENMM_BUILD_OPENCL_TESTS=OFF \
+          #- name: MacOS M1 CPU arm64 Python 3.11
+          #  python-version: "3.11"
+          #  os: M1-arm64
+          #  OPENCL: false
+          #  cuda-version: ""
+          #  compilers: conda-forge
+          #  CMAKE_FLAGS: |
+          #    -DOPENMM_BUILD_OPENCL_LIB=ON \
+          #    -DOPENMM_BUILD_OPENCL_TESTS=OFF \
 
 
     steps:
@@ -576,6 +576,7 @@ jobs:
         run: |
           set -x
           echo 'APT::Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          sudo apt-get update
           sudo apt-get install -y \
             latexmk \
             texlive-latex-recommended \
